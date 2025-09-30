@@ -1,103 +1,738 @@
-import Image from "next/image";
+'use client';
+
+import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState, useRef } from 'react';
+
+interface OnlineUser {
+  name: string;
+  connected_since: string;
+}
+
+interface OnlineUsersResponse {
+  count: number;
+  users: OnlineUser[];
+}
+
+interface Message {
+  id: number;
+  message: string;
+  created_at: string;
+  username: string;
+}
+
+interface Room {
+  id: number;
+  name: string;
+  created_at: string;
+  created_by_name: string;
+  member_count: number;
+}
+
+interface GameConfig {
+  id: string;
+  file_name: string;
+  file_path: string;
+  created_by: string;
+  created_at: string;
+}
+
+interface RoomMember {
+  id: number;
+  name: string;
+  joined_at: string;
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUsersResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const configDropdownRef = useRef<HTMLDivElement>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [gameConfigs, setGameConfigs] = useState<GameConfig[]>([]);
+  const [selectedConfigId, setSelectedConfigId] = useState<string>('');
+  const [showConfigDropdown, setShowConfigDropdown] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
+  const [roomMembers, setRoomMembers] = useState<RoomMember[]>([]);
+  const [userRoom, setUserRoom] = useState<{ inRoom: boolean; room: any } | null>(null);
+  const [canSendMessage, setCanSendMessage] = useState(true);
+  const [cooldownTime, setCooldownTime] = useState(0);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!session) {
+      router.push('/login');
+    }
+  }, [session, status, router]);
+
+  const fetchMessages = async () => {
+    try {
+      const response = await fetch('/api/chat/messages');
+      if (response.ok) {
+        setMessages(await response.json());
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération des messages:', error);
+    }
+  };
+
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || sending || !canSendMessage) return;
+
+    setSending(true);
+    setCanSendMessage(false);
+
+    try {
+      const response = await fetch('/api/chat/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: newMessage.trim() }),
+      });
+
+      if (response.ok) {
+        setNewMessage('');
+        fetchMessages();
+
+        // Démarrer le cooldown de 2 secondes
+        setCooldownTime(2);
+        const cooldownInterval = setInterval(() => {
+          setCooldownTime((prev) => {
+            if (prev <= 1) {
+              clearInterval(cooldownInterval);
+              setCanSendMessage(true);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'envoi du message:', error);
+      setCanSendMessage(true);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const fetchRooms = async () => {
+    try {
+      const response = await fetch('/api/rooms/list');
+      if (response.ok) {
+        setRooms(await response.json());
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération des salons:', error);
+    }
+  };
+
+  const fetchGameConfigs = async () => {
+    try {
+      const response = await fetch('/api/configurations/list');
+      if (response.ok) {
+        setGameConfigs(await response.json());
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération des configurations:', error);
+    }
+  };
+
+  const createRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRoomName.trim() || creatingRoom) return;
+
+    setCreatingRoom(true);
+    try {
+      const response = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roomName: newRoomName.trim(),
+          configId: null
+        }),
+      });
+
+      if (response.ok) {
+        setNewRoomName('');
+        fetchRooms();
+        fetchUserRoom();
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création du salon:', error);
+    } finally {
+      setCreatingRoom(false);
+    }
+  };
+
+  const joinRoom = async (roomId: number) => {
+    try {
+      const response = await fetch('/api/rooms/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ roomId }),
+      });
+
+      if (response.ok) {
+        fetchRooms();
+        fetchUserRoom();
+      }
+    } catch (error) {
+      console.error('Erreur lors de la tentative de rejoindre le salon:', error);
+    }
+  };
+
+  const fetchRoomMembers = async (roomId: number) => {
+    try {
+      const response = await fetch(`/api/rooms/members?roomId=${roomId}`);
+      if (response.ok) {
+        setRoomMembers(await response.json());
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération des membres:', error);
+    }
+  };
+
+  const fetchUserRoom = async () => {
+    try {
+      const response = await fetch('/api/rooms/user-room');
+      if (response.ok) {
+        setUserRoom(await response.json());
+      }
+    } catch (error) {
+      console.error('Erreur lors de la vérification du salon:', error);
+    }
+  };
+
+  const deleteRoom = async (roomId: number) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce salon ?')) return;
+
+    try {
+      const response = await fetch('/api/rooms/delete', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ roomId }),
+      });
+
+      if (response.ok) {
+        fetchRooms();
+        fetchUserRoom();
+        setSelectedRoom(null);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression du salon:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!session) return;
+
+    const fetchOnlineUsers = async () => {
+      try {
+        const response = await fetch('/api/users/online');
+        if (response.ok) {
+          setOnlineUsers(await response.json());
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOnlineUsers();
+    fetchMessages();
+    fetchRooms();
+    fetchUserRoom();
+    fetchGameConfigs();
+
+    const onlineUsersInterval = setInterval(fetchOnlineUsers, 30000);
+    const messagesInterval = setInterval(fetchMessages, 3000);
+    const roomsInterval = setInterval(fetchRooms, 15000);
+    const userRoomInterval = setInterval(fetchUserRoom, 10000);
+
+    return () => {
+      clearInterval(onlineUsersInterval);
+      clearInterval(messagesInterval);
+      clearInterval(roomsInterval);
+      clearInterval(userRoomInterval);
+    };
+  }, [session]);
+
+  useEffect(() => {
+    if (selectedRoom) {
+      fetchRoomMembers(selectedRoom);
+      const interval = setInterval(() => fetchRoomMembers(selectedRoom), 10000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedRoom]);
+
+  useEffect(() => {
+    if (userRoom?.inRoom && userRoom?.room?.id) {
+      fetchRoomMembers(userRoom.room.id);
+      const interval = setInterval(() => fetchRoomMembers(userRoom.room.id), 10000);
+      return () => clearInterval(interval);
+    }
+  }, [userRoom?.inRoom, userRoom?.room?.id]);
+
+  // Auto-scroll vers le bas quand de nouveaux messages arrivent
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Fermer le dropdown quand on clique ailleurs
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (configDropdownRef.current && !configDropdownRef.current.contains(event.target as Node)) {
+        setShowConfigDropdown(false);
+      }
+    };
+
+    if (showConfigDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showConfigDropdown]);
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-zinc-500">Chargement...</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 p-4">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Chat compact */}
+          <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl shadow-xl flex flex-col h-[400px] lg:col-span-2">
+            {/* En-tête du chat */}
+            <div className="p-4 border-b border-zinc-800/60">
+              <h3 className="font-semibold text-zinc-200 flex items-center gap-2">
+                <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+                Chat en direct
+              </h3>
+            </div>
+
+            {/* Zone des messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+              {messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-zinc-500 text-sm">Aucun message...</p>
+                </div>
+              ) : (
+                messages.map((message) => (
+                  <div key={message.id} className={`flex ${
+                    message.username === session.user?.name ? 'justify-end' : 'justify-start'
+                  }`}>
+                    <div className="max-w-[80%]">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`font-medium text-xs ${
+                          message.username === session.user?.name
+                            ? 'text-blue-400'
+                            : 'text-emerald-400'
+                        }`}>
+                          {message.username}
+                        </span>
+                        <span className="text-zinc-500 text-xs">
+                          {new Date(message.created_at).toLocaleTimeString('fr-FR', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      <div className={`px-3 py-2 rounded-lg text-sm break-words ${
+                        message.username === session.user?.name
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-200'
+                      }`}>
+                        {message.message}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Zone de saisie */}
+            <div className="p-4 border-t border-zinc-800/60">
+              <form onSubmit={sendMessage} className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder={!canSendMessage ? `Attendez ${cooldownTime}s...` : "Tapez votre message..."}
+                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 text-sm transition-all"
+                  style={{ outline: 'none' }}
+                  maxLength={500}
+                  disabled={sending || !canSendMessage}
+                />
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim() || sending || !canSendMessage}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors text-sm cursor-pointer"
+                >
+                  {!canSendMessage ? `${cooldownTime}s` : sending ? 'Envoi...' : 'Envoyer'}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Utilisateurs en ligne */}
+          <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-5 shadow-xl">
+            <h3 className="font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+              Utilisateurs connectés
+            </h3>
+            <div>
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-zinc-600 border-t-blue-400 rounded-full animate-spin"></div>
+                  <p className="text-zinc-500 text-sm">Chargement...</p>
+                </div>
+              ) : onlineUsers ? (
+                <div className="space-y-4">
+                  <div className="bg-zinc-800/50 rounded-lg p-3">
+                    <p className="text-zinc-300 text-sm font-medium">
+                      {onlineUsers.count} {onlineUsers.count > 1 ? 'utilisateurs connectés' : 'utilisateur connecté'}
+                    </p>
+                  </div>
+                  <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                    {onlineUsers.users.map((user, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-zinc-800/30 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                          <span className="text-zinc-200 font-medium text-sm">{user.name}</span>
+                        </div>
+                        <span className="text-zinc-500 text-xs">
+                          {new Date(user.connected_since).toLocaleTimeString('fr-FR', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-zinc-500 text-sm">Erreur lors du chargement</p>
+              )}
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Section des salons */}
+          <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-5 shadow-xl lg:col-span-2">
+            <h3 className="font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
+              Salons de jeux
+            </h3>
+
+            {/* Message si l'utilisateur est dans un salon */}
+            {userRoom?.inRoom && (
+              <div className="mb-4 space-y-3">
+                <div className="bg-purple-900/30 border border-purple-700/50 rounded-lg p-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm text-purple-200 mb-2">
+                        Vous êtes dans le salon de jeu : <span className="font-semibold">{userRoom.room.name}</span>
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-purple-300 bg-purple-800/50 px-2 py-0.5 rounded">
+                          {roomMembers.length} {roomMembers.length > 1 ? 'membres' : 'membre'}
+                        </span>
+                        <span className="text-xs text-emerald-300 bg-emerald-900/30 px-2 py-0.5 rounded">
+                          Votre salon
+                        </span>
+                        <span className="text-xs text-purple-300">
+                          Créé par <span className="text-purple-200 font-medium">{userRoom.room.created_by_name || session?.user?.name}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {userRoom?.room?.isCreator && (
+                        <>
+                          <button
+                            onClick={() => {
+                              if (!selectedConfigId) {
+                                alert('Veuillez sélectionner une configuration de jeu');
+                                return;
+                              }
+                              // TODO: Démarrer la partie
+                              console.log('Démarrage de la partie avec config:', selectedConfigId);
+                            }}
+                            disabled={!selectedConfigId}
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                          >
+                            Commencer la partie
+                          </button>
+                          <button
+                            onClick={() => deleteRoom(userRoom.room.id)}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                          >
+                            Supprimer
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {gameConfigs.length > 0 && userRoom?.room?.isCreator && (
+                    <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4">
+                      <label className="block text-sm font-medium text-zinc-300 mb-2.5">
+                        Configuration de jeu
+                      </label>
+                      <div className="relative" ref={configDropdownRef}>
+                        <button
+                          onClick={() => setShowConfigDropdown(!showConfigDropdown)}
+                          className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-200 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 text-sm transition-all cursor-pointer text-left flex items-center justify-between"
+                        >
+                          <span className={selectedConfigId ? 'text-zinc-200' : 'text-zinc-400'}>
+                            {selectedConfigId
+                              ? gameConfigs.find(c => c.id === selectedConfigId)?.file_name
+                              : 'Aucune configuration sélectionnée'}
+                          </span>
+                          <svg
+                            className={`w-3 h-3 transition-transform ${showConfigDropdown ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 12 8"
+                          >
+                            <path d="M1 1L6 6L11 1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+
+                        {showConfigDropdown && (
+                          <div className="absolute z-10 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl max-h-60 overflow-y-auto custom-scrollbar">
+                            <div
+                              onClick={() => {
+                                setSelectedConfigId('');
+                                setShowConfigDropdown(false);
+                              }}
+                              className="px-3 py-2.5 text-sm text-zinc-400 hover:bg-purple-600 hover:text-white cursor-pointer transition-colors"
+                            >
+                              Aucune configuration sélectionnée
+                            </div>
+                            {gameConfigs.map((config) => (
+                              <div
+                                key={config.id}
+                                onClick={() => {
+                                  setSelectedConfigId(config.id);
+                                  setShowConfigDropdown(false);
+                                }}
+                                className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${
+                                  selectedConfigId === config.id
+                                    ? 'bg-purple-600 text-white'
+                                    : 'text-zinc-200 hover:bg-purple-600 hover:text-white'
+                                }`}
+                              >
+                                {config.file_name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-2">
+                        Choisissez une configuration pour lancer le jeu
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Membres du salon */}
+                  <div className={`bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 ${!(gameConfigs.length > 0 && userRoom?.room?.isCreator) ? 'lg:col-span-2' : ''}`}>
+                    <h4 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                      Membres du salon ({roomMembers.length})
+                    </h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                      {roomMembers.map((member) => (
+                        <div key={member.id} className="flex items-center justify-between text-xs bg-zinc-900/50 rounded px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                            <span className="text-zinc-200 font-medium">{member.name}</span>
+                          </div>
+                          <span className="text-zinc-500">
+                            {new Date(member.joined_at).toLocaleTimeString('fr-FR', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Formulaire de création de salon */}
+            {!userRoom?.inRoom && (
+              <form onSubmit={createRoom} className="mb-6">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    placeholder="Nom du salon..."
+                    className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 text-sm transition-all"
+                    maxLength={50}
+                    disabled={creatingRoom}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newRoomName.trim() || creatingRoom}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors text-sm cursor-pointer"
+                  >
+                    {creatingRoom ? 'Création...' : 'Créer'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Liste des salons */}
+            <div className="space-y-2">
+              {rooms.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-zinc-500 text-sm">Aucun salon disponible</p>
+                  <p className="text-zinc-600 text-xs mt-1">Créez le premier salon !</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {rooms.map((room) => {
+                    const isCreator = userRoom?.room?.id === room.id && userRoom?.room?.isCreator;
+                    const isMember = userRoom?.room?.id === room.id;
+
+                    // Si c'est le salon de l'utilisateur, ne pas l'afficher dans la liste
+                    if (isMember) return null;
+
+                    return (
+                      <div
+                        key={room.id}
+                        className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 hover:border-purple-500/50 transition-all"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-semibold text-zinc-200 text-sm">{room.name}</h4>
+                              <span className="text-xs text-zinc-500 bg-zinc-700/50 px-2 py-0.5 rounded">
+                                {room.member_count} {room.member_count > 1 ? 'membres' : 'membre'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              Créé par <span className="text-purple-400">{room.created_by_name}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setSelectedRoom(selectedRoom === room.id ? null : room.id)}
+                              className="px-3 py-1.5 bg-zinc-700/50 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded transition-colors cursor-pointer"
+                            >
+                              {selectedRoom === room.id ? 'Masquer' : 'Voir'}
+                            </button>
+
+                            {!userRoom?.inRoom && (
+                              <button
+                                onClick={() => joinRoom(room.id)}
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                              >
+                                Rejoindre
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {selectedRoom === room.id && !isMember && (
+                          <div className="border-t border-zinc-700/50 pt-3 mt-3">
+                            <p className="text-xs font-medium text-zinc-400 mb-2">Membres du salon :</p>
+                            <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                              {roomMembers.map((member) => (
+                                <div key={member.id} className="flex items-center justify-between text-xs bg-zinc-700/30 rounded px-2 py-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                                    <span className="text-zinc-300">{member.name}</span>
+                                  </div>
+                                  <span className="text-zinc-500">
+                                    {new Date(member.joined_at).toLocaleTimeString('fr-FR', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Informations de session */}
+          <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-5 shadow-xl">
+            <h3 className="font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+              Votre session
+            </h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400">Pseudo</span>
+                <span className="text-zinc-200 font-medium">{session.user?.name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400">Statut</span>
+                <span className="text-emerald-400 font-medium flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                  En ligne
+                </span>
+              </div>
+              <button
+                onClick={() => router.push('/configuration')}
+                className="mt-4 w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
+              >
+                Configuration de jeux
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch('/api/auth/signout-cleanup', { method: 'POST' });
+                  signOut();
+                }}
+                className="w-full px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
+              >
+                Se déconnecter
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

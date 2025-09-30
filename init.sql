@@ -1,0 +1,84 @@
+-- Création de la base de données versus_db
+CREATE DATABASE IF NOT EXISTS versus_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Création de l'utilisateur pour l'application
+CREATE USER IF NOT EXISTS 'versus_user'@'localhost' IDENTIFIED BY 'azerty123';
+GRANT ALL PRIVILEGES ON versus_db.* TO 'versus_user'@'localhost';
+FLUSH PRIVILEGES;
+
+USE versus_db;
+
+-- Table des utilisateurs
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Table des sessions pour voir les utilisateurs connectés
+CREATE TABLE IF NOT EXISTS sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_token VARCHAR(255) NOT NULL UNIQUE,
+    user_id INT NOT NULL,
+    expires TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_session_token (session_token),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Table des messages de chat
+CREATE TABLE IF NOT EXISTS messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_created_at (created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Table des configurations de jeu (créée en premier car rooms a une clé étrangère vers elle)
+CREATE TABLE IF NOT EXISTS game_configurations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    created_by INT NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_created_by (created_by),
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Table des salons
+CREATE TABLE IF NOT EXISTS rooms (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_by INT NOT NULL,
+    config_id INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_created_by (created_by),
+    INDEX idx_config_id (config_id),
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (config_id) REFERENCES game_configurations(id) ON DELETE SET NULL
+);
+
+-- Table des membres des salons
+CREATE TABLE IF NOT EXISTS room_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    room_id INT NOT NULL,
+    user_id INT NOT NULL,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_room_user (room_id, user_id),
+    INDEX idx_room_id (room_id),
+    INDEX idx_user_id (user_id),
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Insertion d'un utilisateur de test
+-- Pseudo: kevin, Mot de passe: azerty123
+INSERT INTO users (password, name) VALUES
+('$2b$12$XKYKBbZGH49MwJjrih2ZWeYOW.SCf44i5KnteE3.A2SxSpaoR2FmG', 'kevin');

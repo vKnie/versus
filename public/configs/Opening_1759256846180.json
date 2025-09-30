@@ -1,0 +1,37 @@
+{
+  "id": 1,
+  "name": "Opening",
+  "description": "Test de configuration",
+  "items": [
+    {
+      "name": "The Apothecary Diaries - Opening | Hana ni Natte",
+      "youtubeLink": "https://youtu.be/EQ-DKvLQlyQ?si=Ud8z2z4faLUNSEaJ",
+      "proposedBy": [
+        "kevin"
+      ]
+    },
+    {
+      "name": "Black Clover Opening 10 | Black Catcher",
+      "youtubeLink": "https://youtu.be/XMeQeIG_rQg?si=KShYle18RWA0ldHt",
+      "proposedBy": [
+        "kevin"
+      ]
+    },
+    {
+      "name": "The Seven Deadly Sins Opening 1 - Passionate Spectrum",
+      "youtubeLink": "https://youtu.be/MHsp-KkGo_g?si=ip5RIoiqS2AY1hEs",
+      "proposedBy": [
+        "kevin"
+      ]
+    },
+    {
+      "name": "Gurren Lagann Opening 1",
+      "youtubeLink": "https://youtu.be/FwgMxjhXkKo?si=fPxWBQLXN_ycw5nW",
+      "proposedBy": [
+        "kevin"
+      ]
+    }
+  ],
+  "createdAt": "2025-09-30T18:28:02.340Z",
+  "createdBy": "kevin"
+}
