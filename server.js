@@ -364,6 +364,58 @@ app.prepare().then(() => {
       console.log(`🎮 Partie démarrée: ${roomName} (session ${gameSessionId})`);
     });
 
+    // 🎬 Synchronisation vidéo - Play
+    socket.on('video_play', (data) => {
+      const { roomId, videoIndex, timestamp } = data;
+      const roomName = `game_room_${roomId}`;
+
+      io.to(roomName).emit('video_play', {
+        videoIndex,
+        timestamp
+      });
+
+      console.log(`▶️ Play vidéo ${videoIndex} à ${timestamp}s`);
+    });
+
+    // 🎬 Synchronisation vidéo - Pause
+    socket.on('video_pause', (data) => {
+      const { roomId, videoIndex, timestamp } = data;
+      const roomName = `game_room_${roomId}`;
+
+      io.to(roomName).emit('video_pause', {
+        videoIndex,
+        timestamp
+      });
+
+      console.log(`⏸️ Pause vidéo ${videoIndex} à ${timestamp}s`);
+    });
+
+    // 🎬 Synchronisation vidéo - Seek (avancer/reculer)
+    socket.on('video_seek', (data) => {
+      const { roomId, videoIndex, timestamp } = data;
+      const roomName = `game_room_${roomId}`;
+
+      io.to(roomName).emit('video_seek', {
+        videoIndex,
+        timestamp
+      });
+
+      console.log(`⏩ Seek vidéo ${videoIndex} à ${timestamp}s`);
+    });
+
+    // 🎬 Synchronisation vidéo - Vitesse de lecture
+    socket.on('video_rate_change', (data) => {
+      const { roomId, videoIndex, playbackRate } = data;
+      const roomName = `game_room_${roomId}`;
+
+      io.to(roomName).emit('video_rate_change', {
+        videoIndex,
+        playbackRate
+      });
+
+      console.log(`⚡ Vitesse vidéo ${videoIndex} changée à ${playbackRate}x`);
+    });
+
     // ✅ Room créée/supprimée/modifiée - Broadcaster à tous
     socket.on('rooms_changed', async () => {
       try {

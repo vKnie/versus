@@ -71,11 +71,18 @@ export async function GET(req: NextRequest) {
     const currentDuel = duels[session_data.current_duel_index];
     const currentRound = tournamentData.currentRound;
 
-    // Compter les joueurs du salon
+    // Compter les joueurs du salon et récupérer le créateur
     const totalPlayers: any = await query(
       'SELECT COUNT(*) as count FROM room_members WHERE room_id = ?',
       [roomId]
     );
+
+    // Récupérer le créateur du salon
+    const roomInfo: any = await query(
+      'SELECT created_by FROM rooms WHERE id = ?',
+      [roomId]
+    );
+    const isGameMaster = roomInfo.length > 0 && roomInfo[0].created_by === userId;
 
     // Récupérer les votes pour le duel actuel avec photos de profil
     const votes: any = await query(
@@ -127,7 +134,8 @@ export async function GET(req: NextRequest) {
       allVoted: votes.length === totalPlayers[0].count,
       tieBreaker: currentTieBreaker || null,
       continueClicks,
-      userHasContinued
+      userHasContinued,
+      isGameMaster
     });
   } catch (error) {
     console.error('Erreur lors de la récupération de l\'état du jeu:', error);

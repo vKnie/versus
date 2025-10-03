@@ -1,0 +1,23 @@
+{
+  "id": 1,
+  "name": "Opening",
+  "description": "Blabla test",
+  "items": [
+    {
+      "name": "Gurren Lagann Opening 1",
+      "youtubeLink": "https://youtu.be/FwgMxjhXkKo?si=co2jdCoqLYcIjEnu",
+      "proposedBy": [
+        "kevin"
+      ]
+    },
+    {
+      "name": "The Apothecary Diaries - Opening | Hana ni Natte",
+      "youtubeLink": "https://youtu.be/EQ-DKvLQlyQ?si=Wh_mcU1_iP5DmCbs",
+      "proposedBy": [
+        "kevin"
+      ]
+    }
+  ],
+  "createdAt": "2025-10-03T14:13:05.957Z",
+  "createdBy": "kevin"
+}

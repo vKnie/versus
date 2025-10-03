@@ -49,6 +49,7 @@ interface GameState {
   tieBreaker: TieBreaker | null;
   continueClicks?: number;
   userHasContinued?: boolean;
+  isGameMaster: boolean;
 }
 
 declare global {
@@ -81,6 +82,7 @@ export default function GamePage() {
   const player1Ref = useRef<any>(null);
   const player2Ref = useRef<any>(null);
   const [ytReady, setYtReady] = useState(false);
+  const [globalVolume, setGlobalVolume] = useState(100);
 
   // ✅ WebSocket - Connexion à la game room
   const { socket, isConnected } = useGameRoom(roomId, session?.user?.name || 'Anonymous');
@@ -213,7 +215,44 @@ export default function GamePage() {
     // Un joueur a rejoint
     socket.on('player_joined', (data: { username: string }) => {
       console.log('👤 Joueur rejoint:', data.username);
-      // Optionnel : afficher une notification
+    });
+
+    // 🎬 Synchronisation vidéo - Play
+    socket.on('video_play', (data: { videoIndex: number; timestamp: number }) => {
+      console.log(`▶️ Commande play reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
+      const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
+      if (player && player.seekTo && player.playVideo) {
+        player.seekTo(data.timestamp, true);
+        player.playVideo();
+      }
+    });
+
+    // 🎬 Synchronisation vidéo - Pause
+    socket.on('video_pause', (data: { videoIndex: number; timestamp: number }) => {
+      console.log(`⏸️ Commande pause reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
+      const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
+      if (player && player.seekTo && player.pauseVideo) {
+        player.seekTo(data.timestamp, true);
+        player.pauseVideo();
+      }
+    });
+
+    // 🎬 Synchronisation vidéo - Seek
+    socket.on('video_seek', (data: { videoIndex: number; timestamp: number }) => {
+      console.log(`⏩ Commande seek reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
+      const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
+      if (player && player.seekTo) {
+        player.seekTo(data.timestamp, true);
+      }
+    });
+
+    // 🎬 Synchronisation vidéo - Vitesse
+    socket.on('video_rate_change', (data: { videoIndex: number; playbackRate: number }) => {
+      console.log(`⚡ Commande vitesse reçue: vidéo ${data.videoIndex} à ${data.playbackRate}x`);
+      const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
+      if (player && player.setPlaybackRate) {
+        player.setPlaybackRate(data.playbackRate);
+      }
     });
 
     // Nettoyage
@@ -224,6 +263,10 @@ export default function GamePage() {
       socket.off('normal_continue_update');
       socket.off('game_ended');
       socket.off('player_joined');
+      socket.off('video_play');
+      socket.off('video_pause');
+      socket.off('video_seek');
+      socket.off('video_rate_change');
     };
   }, [socket, roomId, router]);
 
@@ -232,6 +275,14 @@ export default function GamePage() {
     if (!roomId) return;
     fetchGameState();
   }, [roomId]);
+
+  // ✅ Initialiser les players YouTube quand le duel change
+  useEffect(() => {
+    if (!ytReady || !gameState?.currentDuel) return;
+
+    console.log('🎬 Initialisation des players YouTube pour duel:', gameState.currentDuelIndex);
+    initializePlayers(gameState.currentDuel);
+  }, [ytReady, gameState?.currentDuelIndex]);
 
   // Afficher l'animation de pile ou face quand tous ont voté et qu'il y a égalité
   useEffect(() => {
@@ -300,11 +351,6 @@ export default function GamePage() {
         }
 
         setGameState(state);
-
-        // Si nouveau duel et vidéos YouTube, initialiser les players
-        if (ytReady && state.currentDuel && !player1Ref.current) {
-          initializePlayers(state.currentDuel);
-        }
       } else {
         // Pas de partie en cours, rediriger
         router.push('/');
@@ -351,7 +397,12 @@ export default function GamePage() {
         playerVars: {
           autoplay: 1,
           mute: 0,
-          controls: 1,
+          controls: 0, // Pas de contrôles natifs YouTube pour personne
+          disablekb: 1, // Désactiver clavier pour tout le monde
+          fs: 1, // Plein écran autorisé
+          modestbranding: 1,
+          iv_load_policy: 3, // Masquer les annotations
+          rel: 0, // Ne pas montrer de vidéos similaires
         },
         events: {
           onReady: (event: any) => {
@@ -375,7 +426,12 @@ export default function GamePage() {
         playerVars: {
           autoplay: 1,
           mute: 0,
-          controls: 1,
+          controls: 0, // Pas de contrôles natifs YouTube pour personne
+          disablekb: 1, // Désactiver clavier pour tout le monde
+          fs: 1, // Plein écran autorisé
+          modestbranding: 1,
+          iv_load_policy: 3, // Masquer les annotations
+          rel: 0, // Ne pas montrer de vidéos similaires
         },
         events: {
           onReady: (event: any) => {
@@ -533,6 +589,103 @@ export default function GamePage() {
     }
   };
 
+  // 🎬 Fonctions de contrôle vidéo (Maître du jeu uniquement)
+  const handleVideoPlay = (videoIndex: number) => {
+    if (!gameState?.isGameMaster) return;
+
+    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
+    if (!player || typeof player.playVideo !== 'function') {
+      console.warn('Player not ready or playVideo not available');
+      return;
+    }
+
+    const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
+
+    socket?.emit('video_play', {
+      roomId,
+      videoIndex,
+      timestamp: currentTime
+    });
+
+    // Exécuter aussi localement
+    player.playVideo();
+  };
+
+  const handleVideoPause = (videoIndex: number) => {
+    if (!gameState?.isGameMaster) return;
+
+    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
+    if (!player || typeof player.pauseVideo !== 'function') {
+      console.warn('Player not ready or pauseVideo not available');
+      return;
+    }
+
+    const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
+
+    socket?.emit('video_pause', {
+      roomId,
+      videoIndex,
+      timestamp: currentTime
+    });
+
+    // Exécuter aussi localement
+    player.pauseVideo();
+  };
+
+  const handleVideoSeek = (videoIndex: number, seconds: number) => {
+    if (!gameState?.isGameMaster) return;
+
+    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
+    if (!player || typeof player.seekTo !== 'function') {
+      console.warn('Player not ready or seekTo not available');
+      return;
+    }
+
+    const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
+    const newTime = Math.max(0, currentTime + seconds);
+
+    socket?.emit('video_seek', {
+      roomId,
+      videoIndex,
+      timestamp: newTime
+    });
+
+    // Exécuter aussi localement
+    player.seekTo(newTime, true);
+  };
+
+  const handleVideoRateChange = (videoIndex: number, rate: number) => {
+    if (!gameState?.isGameMaster) return;
+
+    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
+    if (!player || typeof player.setPlaybackRate !== 'function') {
+      console.warn('Player not ready or setPlaybackRate not available');
+      return;
+    }
+
+    socket?.emit('video_rate_change', {
+      roomId,
+      videoIndex,
+      playbackRate: rate
+    });
+
+    // Exécuter aussi localement
+    player.setPlaybackRate(rate);
+  };
+
+  // 🔊 Contrôle du volume global (pour tout le monde)
+  const handleGlobalVolumeChange = (volume: number) => {
+    setGlobalVolume(volume);
+
+    // Appliquer le volume aux deux players
+    if (player1Ref.current && typeof player1Ref.current.setVolume === 'function') {
+      player1Ref.current.setVolume(volume);
+    }
+    if (player2Ref.current && typeof player2Ref.current.setVolume === 'function') {
+      player2Ref.current.setVolume(volume);
+    }
+  };
+
   // Nettoyer les players lors du démontage du composant
   useEffect(() => {
     return () => {
@@ -575,6 +728,17 @@ export default function GamePage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 p-4">
+      {/* CSS pour masquer les overlays YouTube */}
+      <style jsx global>{`
+        .ytp-pause-overlay,
+        .ytp-scroll-min,
+        .ytp-show-cards-title,
+        .ytp-ce-element,
+        .ytp-cards-teaser,
+        .ytp-endscreen-content {
+          display: none !important;
+        }
+      `}</style>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -584,13 +748,31 @@ export default function GamePage() {
               Duel {gameState.currentDuelIndex + 1} / {gameState.totalDuels}
             </p>
           </div>
-          <div className="sm:text-right">
-            <p className="text-sm text-zinc-400">
-              Votes: {gameState.votes} / {gameState.totalPlayers}
-            </p>
-            {gameState.allVoted && (
-              <p className="text-sm text-emerald-400">En attente du prochain duel...</p>
-            )}
+          <div className="flex flex-col sm:items-end gap-2">
+            <div className="sm:text-right">
+              <p className="text-sm text-zinc-400">
+                Votes: {gameState.votes} / {gameState.totalPlayers}
+              </p>
+              {gameState.allVoted && (
+                <p className="text-sm text-emerald-400">En attente du prochain duel...</p>
+              )}
+            </div>
+            {/* Contrôle de volume global */}
+            <div className="bg-zinc-800/50 px-4 py-2 rounded-lg border border-zinc-700/50">
+              <div className="flex items-center gap-3 min-w-[200px]">
+                <span className="text-zinc-400 text-sm">🔊</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={globalVolume}
+                  onChange={(e) => handleGlobalVolumeChange(parseInt(e.target.value))}
+                  className="flex-1 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                  title="Volume global"
+                />
+                <span className="text-zinc-400 text-xs w-8 text-right">{globalVolume}%</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -598,9 +780,64 @@ export default function GamePage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Item 1 */}
           <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl overflow-hidden">
-            <div className="aspect-video bg-black">
+            <div className="aspect-video bg-black relative">
               <div id="player1" className="w-full h-full"></div>
+              {/* Couche transparente pour bloquer les clics sur la vidéo */}
+              <div className="absolute inset-0 pointer-events-auto"></div>
+              {gameState.isGameMaster && (
+                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10">
+                  <span>👑</span> Maître du Jeu
+                </div>
+              )}
             </div>
+
+            {/* Contrôles vidéo pour le maître du jeu */}
+            {gameState.isGameMaster && (
+              <div className="bg-zinc-800/50 p-3 border-b border-zinc-700/50">
+                <div className="flex flex-wrap gap-2 items-center justify-center">
+                  <button
+                    onClick={() => handleVideoSeek(1, -10)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Reculer de 10s"
+                  >
+                    ⏪ -10s
+                  </button>
+                  <button
+                    onClick={() => handleVideoPause(1)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Pause"
+                  >
+                    ⏸️ Pause
+                  </button>
+                  <button
+                    onClick={() => handleVideoPlay(1)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Lecture"
+                  >
+                    ▶️ Play
+                  </button>
+                  <button
+                    onClick={() => handleVideoSeek(1, 10)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Avancer de 10s"
+                  >
+                    ⏩ +10s
+                  </button>
+                  <select
+                    onChange={(e) => handleVideoRateChange(1, parseFloat(e.target.value))}
+                    className="px-2 py-1.5 bg-zinc-700 text-white text-xs rounded cursor-pointer"
+                    defaultValue="1"
+                  >
+                    <option value="0.5">0.5x</option>
+                    <option value="1">1x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
             <div className="p-6">
               <h2 className="text-xl font-semibold text-zinc-200 mb-2">
                 {gameState.currentDuel.item1.name}
@@ -638,9 +875,64 @@ export default function GamePage() {
 
           {/* Item 2 */}
           <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl overflow-hidden">
-            <div className="aspect-video bg-black">
+            <div className="aspect-video bg-black relative">
               <div id="player2" className="w-full h-full"></div>
+              {/* Couche transparente pour bloquer les clics sur la vidéo */}
+              <div className="absolute inset-0 pointer-events-auto"></div>
+              {gameState.isGameMaster && (
+                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10">
+                  <span>👑</span> Maître du Jeu
+                </div>
+              )}
             </div>
+
+            {/* Contrôles vidéo pour le maître du jeu */}
+            {gameState.isGameMaster && (
+              <div className="bg-zinc-800/50 p-3 border-b border-zinc-700/50">
+                <div className="flex flex-wrap gap-2 items-center justify-center">
+                  <button
+                    onClick={() => handleVideoSeek(2, -10)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Reculer de 10s"
+                  >
+                    ⏪ -10s
+                  </button>
+                  <button
+                    onClick={() => handleVideoPause(2)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Pause"
+                  >
+                    ⏸️ Pause
+                  </button>
+                  <button
+                    onClick={() => handleVideoPlay(2)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Lecture"
+                  >
+                    ▶️ Play
+                  </button>
+                  <button
+                    onClick={() => handleVideoSeek(2, 10)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    title="Avancer de 10s"
+                  >
+                    ⏩ +10s
+                  </button>
+                  <select
+                    onChange={(e) => handleVideoRateChange(2, parseFloat(e.target.value))}
+                    className="px-2 py-1.5 bg-zinc-700 text-white text-xs rounded cursor-pointer"
+                    defaultValue="1"
+                  >
+                    <option value="0.5">0.5x</option>
+                    <option value="1">1x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
             <div className="p-6">
               <h2 className="text-xl font-semibold text-zinc-200 mb-2">
                 {gameState.currentDuel.item2.name}
