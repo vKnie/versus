@@ -221,9 +221,27 @@ export default function GamePage() {
     socket.on('video_play', (data: { videoIndex: number; timestamp: number }) => {
       console.log(`▶️ Commande play reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (player && player.seekTo && player.playVideo) {
+      if (!player) {
+        console.error(`❌ Player ${data.videoIndex} non initialisé`);
+        return;
+      }
+      if (typeof player.seekTo === 'function' && typeof player.playVideo === 'function') {
+        // D'abord chercher la position
         player.seekTo(data.timestamp, true);
-        player.playVideo();
+        // Attendre un peu que le seek soit effectif, puis lancer la vidéo
+        setTimeout(() => {
+          player.playVideo();
+          console.log(`✅ Play exécuté pour vidéo ${data.videoIndex}`);
+          // Vérifier que la vidéo joue vraiment
+          setTimeout(() => {
+            const state = player.getPlayerState ? player.getPlayerState() : -1;
+            console.log(`🔍 État du player ${data.videoIndex}: ${state} (1=playing, 2=paused)`);
+            if (state !== 1) {
+              console.warn(`⚠️ La vidéo ${data.videoIndex} n'est pas en lecture, nouvelle tentative...`);
+              player.playVideo();
+            }
+          }, 200);
+        }, 150);
       }
     });
 
@@ -231,9 +249,16 @@ export default function GamePage() {
     socket.on('video_pause', (data: { videoIndex: number; timestamp: number }) => {
       console.log(`⏸️ Commande pause reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (player && player.seekTo && player.pauseVideo) {
+      if (!player) {
+        console.error(`❌ Player ${data.videoIndex} non initialisé`);
+        return;
+      }
+      if (typeof player.seekTo === 'function' && typeof player.pauseVideo === 'function') {
         player.seekTo(data.timestamp, true);
-        player.pauseVideo();
+        setTimeout(() => {
+          player.pauseVideo();
+          console.log(`✅ Pause exécuté pour vidéo ${data.videoIndex}`);
+        }, 150);
       }
     });
 
@@ -241,8 +266,13 @@ export default function GamePage() {
     socket.on('video_seek', (data: { videoIndex: number; timestamp: number }) => {
       console.log(`⏩ Commande seek reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (player && player.seekTo) {
+      if (!player) {
+        console.error(`❌ Player ${data.videoIndex} non initialisé`);
+        return;
+      }
+      if (typeof player.seekTo === 'function') {
         player.seekTo(data.timestamp, true);
+        console.log(`✅ Seek exécuté pour vidéo ${data.videoIndex}`);
       }
     });
 
@@ -250,8 +280,13 @@ export default function GamePage() {
     socket.on('video_rate_change', (data: { videoIndex: number; playbackRate: number }) => {
       console.log(`⚡ Commande vitesse reçue: vidéo ${data.videoIndex} à ${data.playbackRate}x`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (player && player.setPlaybackRate) {
+      if (!player) {
+        console.error(`❌ Player ${data.videoIndex} non initialisé`);
+        return;
+      }
+      if (typeof player.setPlaybackRate === 'function') {
         player.setPlaybackRate(data.playbackRate);
+        console.log(`✅ Vitesse changée pour vidéo ${data.videoIndex}`);
       }
     });
 
@@ -389,29 +424,73 @@ export default function GamePage() {
     const videoId1 = extractYouTubeId(duel.item1.youtubeLink);
     const videoId2 = extractYouTubeId(duel.item2.youtubeLink);
 
+    // 🎬 Écouteurs pour synchronisation automatique (Maître du jeu uniquement)
+    const setupSyncListeners = (player: any, videoIndex: number) => {
+      if (!gameState?.isGameMaster) return;
+
+      let lastState = -1;
+
+      // Détecter les changements d'état (play/pause)
+      const onStateChange = (event: any) => {
+        const state = event.data;
+
+        // 1 = playing, 2 = paused
+        if (state === 1 && lastState !== 1) {
+          const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
+          console.log(`🎮 Auto-sync: Play vidéo ${videoIndex} à ${currentTime}s`);
+          socket?.emit('video_play', {
+            roomId,
+            videoIndex,
+            timestamp: currentTime
+          });
+        } else if (state === 2 && lastState !== 2) {
+          const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
+          console.log(`🎮 Auto-sync: Pause vidéo ${videoIndex} à ${currentTime}s`);
+          socket?.emit('video_pause', {
+            roomId,
+            videoIndex,
+            timestamp: currentTime
+          });
+        }
+
+        lastState = state;
+      };
+
+      player.addEventListener('onStateChange', onStateChange);
+    };
+
     if (videoId1 && window.YT && window.YT.Player) {
       player1Ref.current = new window.YT.Player('player1', {
         height: '100%',
         width: '100%',
         videoId: videoId1,
         playerVars: {
-          autoplay: 1,
-          mute: 0,
-          controls: 0, // Pas de contrôles natifs YouTube pour personne
-          disablekb: 1, // Désactiver clavier pour tout le monde
-          fs: 1, // Plein écran autorisé
+          autoplay: 0, // Pas d'autoplay au chargement
+          mute: 1, // Démarrer en muet pour permettre l'autoplay ultérieur
+          controls: 0, // Pas de contrôles YouTube natifs
+          disablekb: 1, // Désactiver clavier
+          fs: 0, // Pas de plein écran
           modestbranding: 1,
           iv_load_policy: 3, // Masquer les annotations
           rel: 0, // Ne pas montrer de vidéos similaires
         },
         events: {
           onReady: (event: any) => {
+            console.log('✅ Player 1 prêt');
             // Synchroniser avec le timestamp du serveur si disponible
             if (gameState?.videoStartTime) {
               const serverTime = new Date(gameState.videoStartTime).getTime();
               const now = Date.now();
               const elapsed = (now - serverTime) / 1000;
               event.target.seekTo(elapsed, true);
+            }
+
+            // Configurer les écouteurs de synchronisation
+            setupSyncListeners(event.target, 1);
+
+            // Pour les non-maîtres, mettre en pause au démarrage
+            if (!gameState?.isGameMaster) {
+              event.target.pauseVideo();
             }
           }
         }
@@ -424,22 +503,31 @@ export default function GamePage() {
         width: '100%',
         videoId: videoId2,
         playerVars: {
-          autoplay: 1,
-          mute: 0,
-          controls: 0, // Pas de contrôles natifs YouTube pour personne
-          disablekb: 1, // Désactiver clavier pour tout le monde
-          fs: 1, // Plein écran autorisé
+          autoplay: 0, // Pas d'autoplay au chargement
+          mute: 1, // Démarrer en muet pour permettre l'autoplay ultérieur
+          controls: 0, // Pas de contrôles YouTube natifs
+          disablekb: 1, // Désactiver clavier
+          fs: 0, // Pas de plein écran
           modestbranding: 1,
           iv_load_policy: 3, // Masquer les annotations
           rel: 0, // Ne pas montrer de vidéos similaires
         },
         events: {
           onReady: (event: any) => {
+            console.log('✅ Player 2 prêt');
             if (gameState?.videoStartTime) {
               const serverTime = new Date(gameState.videoStartTime).getTime();
               const now = Date.now();
               const elapsed = (now - serverTime) / 1000;
               event.target.seekTo(elapsed, true);
+            }
+
+            // Configurer les écouteurs de synchronisation
+            setupSyncListeners(event.target, 2);
+
+            // Pour les non-maîtres, mettre en pause au démarrage
+            if (!gameState?.isGameMaster) {
+              event.target.pauseVideo();
             }
           }
         }
@@ -589,100 +677,22 @@ export default function GamePage() {
     }
   };
 
-  // 🎬 Fonctions de contrôle vidéo (Maître du jeu uniquement)
-  const handleVideoPlay = (videoIndex: number) => {
-    if (!gameState?.isGameMaster) return;
-
-    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
-    if (!player || typeof player.playVideo !== 'function') {
-      console.warn('Player not ready or playVideo not available');
-      return;
-    }
-
-    const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
-
-    socket?.emit('video_play', {
-      roomId,
-      videoIndex,
-      timestamp: currentTime
-    });
-
-    // Exécuter aussi localement
-    player.playVideo();
-  };
-
-  const handleVideoPause = (videoIndex: number) => {
-    if (!gameState?.isGameMaster) return;
-
-    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
-    if (!player || typeof player.pauseVideo !== 'function') {
-      console.warn('Player not ready or pauseVideo not available');
-      return;
-    }
-
-    const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
-
-    socket?.emit('video_pause', {
-      roomId,
-      videoIndex,
-      timestamp: currentTime
-    });
-
-    // Exécuter aussi localement
-    player.pauseVideo();
-  };
-
-  const handleVideoSeek = (videoIndex: number, seconds: number) => {
-    if (!gameState?.isGameMaster) return;
-
-    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
-    if (!player || typeof player.seekTo !== 'function') {
-      console.warn('Player not ready or seekTo not available');
-      return;
-    }
-
-    const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
-    const newTime = Math.max(0, currentTime + seconds);
-
-    socket?.emit('video_seek', {
-      roomId,
-      videoIndex,
-      timestamp: newTime
-    });
-
-    // Exécuter aussi localement
-    player.seekTo(newTime, true);
-  };
-
-  const handleVideoRateChange = (videoIndex: number, rate: number) => {
-    if (!gameState?.isGameMaster) return;
-
-    const player = videoIndex === 1 ? player1Ref.current : player2Ref.current;
-    if (!player || typeof player.setPlaybackRate !== 'function') {
-      console.warn('Player not ready or setPlaybackRate not available');
-      return;
-    }
-
-    socket?.emit('video_rate_change', {
-      roomId,
-      videoIndex,
-      playbackRate: rate
-    });
-
-    // Exécuter aussi localement
-    player.setPlaybackRate(rate);
-  };
-
   // 🔊 Contrôle du volume global (pour tout le monde)
   const handleGlobalVolumeChange = (volume: number) => {
     setGlobalVolume(volume);
 
-    // Appliquer le volume aux deux players
+    // Appliquer le volume aux deux players et unmute si volume > 0
     if (player1Ref.current && typeof player1Ref.current.setVolume === 'function') {
       player1Ref.current.setVolume(volume);
+      if (volume > 0 && typeof player1Ref.current.unMute === 'function') {
+        player1Ref.current.unMute();
+      }
     }
     if (player2Ref.current && typeof player2Ref.current.setVolume === 'function') {
       player2Ref.current.setVolume(volume);
+      if (volume > 0 && typeof player2Ref.current.unMute === 'function') {
+        player2Ref.current.unMute();
+      }
     }
   };
 
@@ -730,12 +740,61 @@ export default function GamePage() {
     <div className="min-h-screen bg-zinc-950 p-4">
       {/* CSS pour masquer les overlays YouTube */}
       <style jsx global>{`
+        /* Masquer tous les overlays et boutons YouTube */
         .ytp-pause-overlay,
         .ytp-scroll-min,
         .ytp-show-cards-title,
         .ytp-ce-element,
         .ytp-cards-teaser,
-        .ytp-endscreen-content {
+        .ytp-endscreen-content,
+        .ytp-chrome-top,
+        .ytp-gradient-top,
+        .ytp-chrome-bottom,
+        .ytp-gradient-bottom,
+        .ytp-watermark,
+        .ytp-paid-content-overlay,
+        .ytp-suggested-action,
+        .ytp-share-button-visible,
+        .ytp-share-panel,
+        .ytp-watch-later-button,
+        .ytp-watch-later-icon,
+        .iv-branding,
+        .ytp-cards-button,
+        .ytp-cards-teaser,
+        .annotation,
+        .ytp-upnext,
+        .ytp-title-channel,
+        .ytp-tooltip,
+        .ytp-impression-link,
+        .ytp-cued-thumbnail-overlay,
+        .ytp-related-on-error-overlay,
+        .ytp-button[aria-label*="Partager"],
+        .ytp-button[aria-label*="Share"],
+        .ytp-button[aria-label*="Regarder"],
+        .ytp-button[aria-label*="Watch"],
+        a[class*="ytp"] {
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+
+        /* Masquer tout ce qui apparaît en hover sur la vidéo */
+        .ytp-chrome-top-buttons,
+        .ytp-title,
+        .ytp-title-text,
+        .ytp-title-link,
+        .ytp-title-channel-logo,
+        .ytp-title-expanded-overlay,
+        .ytp-contextmenu {
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+        }
+
+        /* Forcer la suppression des boutons même s'ils changent de classe */
+        .html5-video-player .ytp-chrome-top *:not(.ytp-time-display),
+        .html5-video-player .ytp-chrome-bottom *:not(.ytp-progress-bar):not(.ytp-time-display) {
           display: none !important;
         }
       `}</style>
@@ -783,9 +842,9 @@ export default function GamePage() {
             <div className="aspect-video bg-black relative">
               <div id="player1" className="w-full h-full"></div>
               {/* Couche transparente pour bloquer les clics sur la vidéo */}
-              <div className="absolute inset-0 pointer-events-auto"></div>
+              <div className="absolute inset-0 pointer-events-auto bg-transparent"></div>
               {gameState.isGameMaster && (
-                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10">
+                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10 pointer-events-none">
                   <span>👑</span> Maître du Jeu
                 </div>
               )}
@@ -796,35 +855,72 @@ export default function GamePage() {
               <div className="bg-zinc-800/50 p-3 border-b border-zinc-700/50">
                 <div className="flex flex-wrap gap-2 items-center justify-center">
                   <button
-                    onClick={() => handleVideoSeek(1, -10)}
+                    onClick={() => {
+                      const player = player1Ref.current;
+                      if (player && player.getCurrentTime && player.seekTo) {
+                        const currentTime = player.getCurrentTime();
+                        const newTime = Math.max(0, currentTime - 10);
+                        player.seekTo(newTime, true);
+                        socket?.emit('video_seek', { roomId, videoIndex: 1, timestamp: newTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Reculer de 10s"
                   >
                     ⏪ -10s
                   </button>
                   <button
-                    onClick={() => handleVideoPause(1)}
+                    onClick={() => {
+                      const player = player1Ref.current;
+                      if (player && player.getCurrentTime && player.pauseVideo) {
+                        const currentTime = player.getCurrentTime();
+                        player.pauseVideo();
+                        socket?.emit('video_pause', { roomId, videoIndex: 1, timestamp: currentTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Pause"
                   >
                     ⏸️ Pause
                   </button>
                   <button
-                    onClick={() => handleVideoPlay(1)}
+                    onClick={() => {
+                      const player = player1Ref.current;
+                      if (player && player.getCurrentTime && player.playVideo) {
+                        const currentTime = player.getCurrentTime();
+                        player.playVideo();
+                        socket?.emit('video_play', { roomId, videoIndex: 1, timestamp: currentTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Lecture"
                   >
                     ▶️ Play
                   </button>
                   <button
-                    onClick={() => handleVideoSeek(1, 10)}
+                    onClick={() => {
+                      const player = player1Ref.current;
+                      if (player && player.getCurrentTime && player.seekTo) {
+                        const currentTime = player.getCurrentTime();
+                        const newTime = currentTime + 10;
+                        player.seekTo(newTime, true);
+                        socket?.emit('video_seek', { roomId, videoIndex: 1, timestamp: newTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Avancer de 10s"
                   >
                     ⏩ +10s
                   </button>
                   <select
-                    onChange={(e) => handleVideoRateChange(1, parseFloat(e.target.value))}
+                    onChange={(e) => {
+                      const player = player1Ref.current;
+                      const rate = parseFloat(e.target.value);
+                      if (player && player.setPlaybackRate) {
+                        player.setPlaybackRate(rate);
+                        socket?.emit('video_rate_change', { roomId, videoIndex: 1, playbackRate: rate });
+                      }
+                    }}
                     className="px-2 py-1.5 bg-zinc-700 text-white text-xs rounded cursor-pointer"
                     defaultValue="1"
                   >
@@ -878,9 +974,9 @@ export default function GamePage() {
             <div className="aspect-video bg-black relative">
               <div id="player2" className="w-full h-full"></div>
               {/* Couche transparente pour bloquer les clics sur la vidéo */}
-              <div className="absolute inset-0 pointer-events-auto"></div>
+              <div className="absolute inset-0 pointer-events-auto bg-transparent"></div>
               {gameState.isGameMaster && (
-                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10">
+                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10 pointer-events-none">
                   <span>👑</span> Maître du Jeu
                 </div>
               )}
@@ -891,35 +987,72 @@ export default function GamePage() {
               <div className="bg-zinc-800/50 p-3 border-b border-zinc-700/50">
                 <div className="flex flex-wrap gap-2 items-center justify-center">
                   <button
-                    onClick={() => handleVideoSeek(2, -10)}
+                    onClick={() => {
+                      const player = player2Ref.current;
+                      if (player && player.getCurrentTime && player.seekTo) {
+                        const currentTime = player.getCurrentTime();
+                        const newTime = Math.max(0, currentTime - 10);
+                        player.seekTo(newTime, true);
+                        socket?.emit('video_seek', { roomId, videoIndex: 2, timestamp: newTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Reculer de 10s"
                   >
                     ⏪ -10s
                   </button>
                   <button
-                    onClick={() => handleVideoPause(2)}
+                    onClick={() => {
+                      const player = player2Ref.current;
+                      if (player && player.getCurrentTime && player.pauseVideo) {
+                        const currentTime = player.getCurrentTime();
+                        player.pauseVideo();
+                        socket?.emit('video_pause', { roomId, videoIndex: 2, timestamp: currentTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Pause"
                   >
                     ⏸️ Pause
                   </button>
                   <button
-                    onClick={() => handleVideoPlay(2)}
+                    onClick={() => {
+                      const player = player2Ref.current;
+                      if (player && player.getCurrentTime && player.playVideo) {
+                        const currentTime = player.getCurrentTime();
+                        player.playVideo();
+                        socket?.emit('video_play', { roomId, videoIndex: 2, timestamp: currentTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Lecture"
                   >
                     ▶️ Play
                   </button>
                   <button
-                    onClick={() => handleVideoSeek(2, 10)}
+                    onClick={() => {
+                      const player = player2Ref.current;
+                      if (player && player.getCurrentTime && player.seekTo) {
+                        const currentTime = player.getCurrentTime();
+                        const newTime = currentTime + 10;
+                        player.seekTo(newTime, true);
+                        socket?.emit('video_seek', { roomId, videoIndex: 2, timestamp: newTime });
+                      }
+                    }}
                     className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
                     title="Avancer de 10s"
                   >
                     ⏩ +10s
                   </button>
                   <select
-                    onChange={(e) => handleVideoRateChange(2, parseFloat(e.target.value))}
+                    onChange={(e) => {
+                      const player = player2Ref.current;
+                      const rate = parseFloat(e.target.value);
+                      if (player && player.setPlaybackRate) {
+                        player.setPlaybackRate(rate);
+                        socket?.emit('video_rate_change', { roomId, videoIndex: 2, playbackRate: rate });
+                      }
+                    }}
                     className="px-2 py-1.5 bg-zinc-700 text-white text-xs rounded cursor-pointer"
                     defaultValue="1"
                   >
