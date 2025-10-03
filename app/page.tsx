@@ -3,10 +3,14 @@
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
+import Avatar from '@/components/Avatar';
+import { useSocket, useGameRoom } from '@/lib/useSocket';
 
 interface OnlineUser {
   name: string;
+  in_game: boolean;
   connected_since: string;
+  profile_picture_url?: string | null;
 }
 
 interface OnlineUsersResponse {
@@ -19,6 +23,7 @@ interface Message {
   message: string;
   created_at: string;
   username: string;
+  profile_picture_url?: string | null;
 }
 
 interface Room {
@@ -41,6 +46,7 @@ interface RoomMember {
   id: number;
   name: string;
   joined_at: string;
+  profile_picture_url?: string | null;
 }
 
 export default function Home() {
@@ -64,6 +70,29 @@ export default function Home() {
   const [userRoom, setUserRoom] = useState<{ inRoom: boolean; room: any } | null>(null);
   const [canSendMessage, setCanSendMessage] = useState(true);
   const [cooldownTime, setCooldownTime] = useState(0);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
+  const [gameSession, setGameSession] = useState<{ inGame: boolean; roomName?: string; gameSessionId?: number } | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<{ profile_picture_url?: string | null }>({});
+
+  // ✅ WebSocket connection
+  const { socket, isConnected } = useSocket();
+
+  // ✅ Rejoindre automatiquement la room socket du salon
+  useGameRoom(userRoom?.inRoom ? userRoom.room.id : null, session?.user?.name || '');
+
+  // ✅ Notifier IMMÉDIATEMENT la connexion (une fois que socket + session sont prêts)
+  const hasNotifiedRef = useRef(false);
+
+  useEffect(() => {
+    if (socket && isConnected && session && !hasNotifiedRef.current) {
+      hasNotifiedRef.current = true;
+
+      // Délai réduit car la session est créée dans le callback jwt de NextAuth
+      setTimeout(() => {
+        socket.emit('refresh_online_users');
+      }, 300);
+    }
+  }, [socket, isConnected, session]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -100,8 +129,20 @@ export default function Home() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+
+        // Ajouter le nouveau message à la liste localement
+        if (data.message) {
+          setMessages(prev => [...prev, data.message]);
+        }
+
         setNewMessage('');
-        fetchMessages();
+
+        // ✅ Émettre événement WebSocket pour notifier les AUTRES utilisateurs
+        socket?.emit('chat_message', {
+          message: newMessage.trim(),
+          username: session?.user?.name,
+        });
 
         // Démarrer le cooldown de 2 secondes
         setCooldownTime(2);
@@ -146,6 +187,31 @@ export default function Home() {
     }
   };
 
+  const fetchUserRole = async () => {
+    try {
+      const response = await fetch('/api/users/me');
+      if (response.ok) {
+        const data = await response.json();
+        setUserRoles(data.roles || []);
+        setCurrentUserProfile({ profile_picture_url: data.profile_picture_url });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération du rôle utilisateur:', error);
+    }
+  };
+
+  const checkGameSession = async () => {
+    try {
+      const response = await fetch('/api/game/check-session');
+      if (response.ok) {
+        const data = await response.json();
+        setGameSession(data);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la vérification de la session de jeu:', error);
+    }
+  };
+
   const createRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomName.trim() || creatingRoom) return;
@@ -164,7 +230,13 @@ export default function Home() {
       });
 
       if (response.ok) {
+        const data = await response.json();
         setNewRoomName('');
+
+        // ✅ Émettre événements WebSocket pour notifier tous les clients
+        socket?.emit('rooms_changed');
+        socket?.emit('room_members_changed', { roomId: data.roomId });
+
         fetchRooms();
         fetchUserRoom();
       }
@@ -186,6 +258,13 @@ export default function Home() {
       });
 
       if (response.ok) {
+        // Attendre un peu pour que l'API termine l'insertion
+        await new Promise(r => setTimeout(r, 200));
+
+        // ✅ Émettre événements WebSocket pour notifier tous les clients
+        socket?.emit('rooms_changed');
+        socket?.emit('room_members_changed', { roomId });
+
         fetchRooms();
         fetchUserRoom();
       }
@@ -229,6 +308,10 @@ export default function Home() {
       });
 
       if (response.ok) {
+        // ✅ Émettre événements WebSocket pour notifier tous les clients
+        socket?.emit('rooms_changed');
+        socket?.emit('room_members_changed', { roomId });
+
         fetchRooms();
         fetchUserRoom();
         setSelectedRoom(null);
@@ -238,6 +321,165 @@ export default function Home() {
     }
   };
 
+  const leaveRoom = async () => {
+    if (!confirm('Êtes-vous sûr de vouloir quitter ce salon ?')) return;
+
+    try {
+      const response = await fetch('/api/rooms/leave', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const roomId = userRoom?.room?.id;
+
+        // ✅ Émettre événements WebSocket pour notifier tous les clients
+        socket?.emit('rooms_changed');
+        if (roomId) {
+          socket?.emit('room_members_changed', { roomId });
+        }
+
+        fetchRooms();
+        fetchUserRoom();
+        setSelectedRoom(null);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Erreur lors de la sortie du salon');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la sortie du salon:', error);
+    }
+  };
+
+  const kickMember = async (targetUserId: number) => {
+    if (!confirm('Êtes-vous sûr de vouloir expulser ce membre ?')) return;
+
+    const roomId = userRoom?.room?.id;
+    if (!roomId) return;
+
+    try {
+      const response = await fetch('/api/rooms/kick', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ roomId, targetUserId }),
+      });
+
+      if (response.ok) {
+        // ✅ Émettre événements WebSocket pour notifier tous les clients
+        socket?.emit('rooms_changed');
+        socket?.emit('room_members_changed', { roomId });
+
+        fetchRoomMembers(roomId);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Erreur lors de l\'expulsion du membre');
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'expulsion du membre:', error);
+    }
+  };
+
+  // ✅ WebSocket - Écouter les mises à jour en temps réel
+  useEffect(() => {
+    if (!socket || !session) return;
+
+    // Écouter les messages du chat
+    socket.on('chat_update', (data: { messages: any[] }) => {
+      // Convertir createdAt en created_at (serveur envoie createdAt, frontend attend created_at)
+      const formattedMessages = data.messages.map(msg => ({
+        id: msg.id,
+        message: msg.message,
+        username: msg.username,
+        profile_picture_url: msg.profile_picture_url || msg.profilePictureUrl,
+        created_at: msg.created_at || msg.createdAt, // Support des deux formats
+      }));
+      setMessages(formattedMessages);
+    });
+
+    // Écouter les updates de rooms
+    socket.on('rooms_update', (data: { rooms: Room[] }) => {
+      setRooms(data.rooms);
+    });
+
+    // Écouter les updates de room members
+    socket.on('room_members_update', (data: { roomId: number; members: any[] }) => {
+      // Convertir les formats pour compatibilité
+      const formattedMembers = data.members.map(m => ({
+        id: m.id,
+        name: m.name,
+        profile_picture_url: m.profile_picture_url || m.profilePictureUrl,
+        joined_at: m.joined_at || m.joinedAt,
+        in_game: m.in_game || m.inGame,
+      }));
+
+      // Mettre à jour si c'est la room sélectionnée ou la room de l'utilisateur
+      if (selectedRoom === data.roomId || userRoom?.room?.id === data.roomId) {
+        setRoomMembers(formattedMembers);
+
+        // Vérifier si l'utilisateur actuel a été expulsé
+        if (userRoom?.room?.id === data.roomId) {
+          const isStillMember = data.members.some(m => m.name === session?.user?.name);
+          if (!isStillMember) {
+            // L'utilisateur a été expulsé
+            alert('Vous avez été expulsé du salon');
+            fetchUserRoom();
+            setSelectedRoom(null);
+          }
+        }
+      }
+    });
+
+    // Écouter le démarrage de partie pour rediriger automatiquement
+    socket.on('game_started', (data: { roomId: number; roomName: string; gameSessionId: number }) => {
+      console.log('🎮 [CLIENT] Événement game_started reçu:', JSON.stringify(data, null, 2));
+      console.log('🎮 [CLIENT] userRoom:', JSON.stringify(userRoom, null, 2));
+      console.log('🎮 [CLIENT] userRoom?.inRoom:', userRoom?.inRoom);
+      console.log('🎮 [CLIENT] userRoom?.room?.id:', userRoom?.room?.id);
+      console.log('🎮 [CLIENT] data.roomId:', data.roomId);
+      console.log('🎮 [CLIENT] Comparaison:', userRoom?.room?.id === data.roomId);
+
+      // Vérifier si l'utilisateur est dans ce salon avant de rediriger
+      if (userRoom?.inRoom && userRoom.room.id === data.roomId) {
+        console.log('🎮 [CLIENT] ✅ Redirection vers la partie:', data.roomName);
+        const gameUrl = `/game/${encodeURIComponent(data.roomName)}`;
+        console.log('🎮 [CLIENT] URL:', gameUrl);
+        window.location.href = gameUrl; // Force un reload complet de la page
+      } else {
+        console.log('🎮 [CLIENT] ❌ Événement ignoré - utilisateur pas dans ce salon ou userRoom non chargé');
+        console.log('🎮 [CLIENT] Raison:', {
+          userRoomExists: !!userRoom,
+          inRoom: userRoom?.inRoom,
+          roomIdMatch: userRoom?.room?.id === data.roomId,
+          userRoomId: userRoom?.room?.id,
+          eventRoomId: data.roomId
+        });
+      }
+    });
+
+    // Écouter les updates d'utilisateurs en ligne
+    socket.on('online_users_update', (data: { count: number; users: OnlineUser[] }) => {
+      setOnlineUsers({
+        count: data.count,
+        users: data.users,
+      });
+    });
+
+    // Nettoyage
+    return () => {
+      socket.off('chat_update');
+      socket.off('rooms_update');
+      socket.off('room_members_update');
+      socket.off('game_started');
+      socket.off('online_users_update');
+    };
+  }, [socket, session, selectedRoom, userRoom?.room?.id, router]);
+
+  // ✅ Chargement initial (une seule fois, sans polling)
   useEffect(() => {
     if (!session) return;
 
@@ -252,38 +494,28 @@ export default function Home() {
       }
     };
 
+    // Chargement initial seulement
     fetchOnlineUsers();
     fetchMessages();
     fetchRooms();
     fetchUserRoom();
     fetchGameConfigs();
+    fetchUserRole();
+    checkGameSession();
 
-    const onlineUsersInterval = setInterval(fetchOnlineUsers, 30000);
-    const messagesInterval = setInterval(fetchMessages, 3000);
-    const roomsInterval = setInterval(fetchRooms, 15000);
-    const userRoomInterval = setInterval(fetchUserRoom, 10000);
-
-    return () => {
-      clearInterval(onlineUsersInterval);
-      clearInterval(messagesInterval);
-      clearInterval(roomsInterval);
-      clearInterval(userRoomInterval);
-    };
+    // ❌ POLLING SUPPRIMÉ - WebSocket gère les mises à jour
   }, [session]);
 
+  // ✅ Chargement initial des room members (sans polling, WebSocket prend le relais)
   useEffect(() => {
     if (selectedRoom) {
       fetchRoomMembers(selectedRoom);
-      const interval = setInterval(() => fetchRoomMembers(selectedRoom), 10000);
-      return () => clearInterval(interval);
     }
   }, [selectedRoom]);
 
   useEffect(() => {
     if (userRoom?.inRoom && userRoom?.room?.id) {
       fetchRoomMembers(userRoom.room.id);
-      const interval = setInterval(() => fetchRoomMembers(userRoom.room.id), 10000);
-      return () => clearInterval(interval);
     }
   }, [userRoom?.inRoom, userRoom?.room?.id]);
 
@@ -343,9 +575,12 @@ export default function Home() {
                 </div>
               ) : (
                 messages.map((message) => (
-                  <div key={message.id} className={`flex ${
+                  <div key={message.id} className={`flex gap-2 ${
                     message.username === session.user?.name ? 'justify-end' : 'justify-start'
                   }`}>
+                    {message.username !== session.user?.name && (
+                      <Avatar src={message.profile_picture_url} name={message.username} size="sm" />
+                    )}
                     <div className="max-w-[80%]">
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`font-medium text-xs ${
@@ -370,6 +605,9 @@ export default function Home() {
                         {message.message}
                       </div>
                     </div>
+                    {message.username === session.user?.name && (
+                      <Avatar src={message.profile_picture_url} name={message.username} size="sm" />
+                    )}
                   </div>
                 ))
               )}
@@ -423,8 +661,12 @@ export default function Home() {
                     {onlineUsers.users.map((user, index) => (
                       <div key={index} className="flex items-center justify-between p-2 bg-zinc-800/30 rounded-lg">
                         <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                          <Avatar src={user.profile_picture_url} name={user.name} size="xs" />
+                          <span className={`w-2 h-2 rounded-full ${user.in_game ? 'bg-orange-400' : 'bg-emerald-400'}`}></span>
                           <span className="text-zinc-200 font-medium text-sm">{user.name}</span>
+                          {user.in_game && (
+                            <span className="text-xs bg-orange-900/30 text-orange-400 px-2 py-0.5 rounded">En jeu</span>
+                          )}
                         </div>
                         <span className="text-zinc-500 text-xs">
                           {new Date(user.connected_since).toLocaleTimeString('fr-FR', {
@@ -455,7 +697,7 @@ export default function Home() {
             {userRoom?.inRoom && (
               <div className="mb-4 space-y-3">
                 <div className="bg-purple-900/30 border border-purple-700/50 rounded-lg p-3">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <p className="text-sm text-purple-200 mb-2">
                         Vous êtes dans le salon de jeu : <span className="font-semibold">{userRoom.room.name}</span>
@@ -464,25 +706,94 @@ export default function Home() {
                         <span className="text-xs text-purple-300 bg-purple-800/50 px-2 py-0.5 rounded">
                           {roomMembers.length} {roomMembers.length > 1 ? 'membres' : 'membre'}
                         </span>
-                        <span className="text-xs text-emerald-300 bg-emerald-900/30 px-2 py-0.5 rounded">
-                          Votre salon
-                        </span>
+                        {gameSession?.inGame && gameSession?.roomName === userRoom.room.name && (
+                          <span className="text-xs text-orange-300 bg-orange-900/30 px-2 py-0.5 rounded animate-pulse">
+                            En cours
+                          </span>
+                        )}
+                        {userRoom?.room?.isCreator && (
+                          <span className="text-xs text-emerald-300 bg-emerald-900/30 px-2 py-0.5 rounded">
+                            Créateur
+                          </span>
+                        )}
                         <span className="text-xs text-purple-300">
-                          Créé par <span className="text-purple-200 font-medium">{userRoom.room.created_by_name || session?.user?.name}</span>
+                          Créé par <span className="text-purple-200 font-medium">{userRoom.room.created_by_name}</span>
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {userRoom?.room?.isCreator && (
+                      {gameSession?.inGame && gameSession?.roomName === userRoom.room.name && (
+                        <button
+                          onClick={() => {
+                            const gameUrl = `/game/${encodeURIComponent(gameSession.roomName!)}`;
+                            window.location.href = gameUrl; // Force un reload complet de la page
+                          }}
+                          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap animate-pulse"
+                        >
+                          Rejoindre
+                        </button>
+                      )}
+                      {!gameSession?.inGame && !userRoom?.room?.isCreator && (
+                        <button
+                          onClick={leaveRoom}
+                          className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                        >
+                          Quitter
+                        </button>
+                      )}
+                      {userRoom?.room?.isCreator && !gameSession?.inGame && (
                         <>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (!selectedConfigId) {
                                 alert('Veuillez sélectionner une configuration de jeu');
                                 return;
                               }
-                              // TODO: Démarrer la partie
-                              console.log('Démarrage de la partie avec config:', selectedConfigId);
+
+                              try {
+                                console.log('🎮 [CLIENT] Démarrage de la partie...');
+                                console.log('🎮 [CLIENT] roomId:', userRoom.room.id);
+                                console.log('🎮 [CLIENT] configId:', selectedConfigId);
+
+                                const response = await fetch('/api/game/start', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    roomId: userRoom.room.id,
+                                    configId: selectedConfigId,
+                                  }),
+                                });
+
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  console.log('🎮 [CLIENT] Réponse API reçue:', JSON.stringify(data, null, 2));
+
+                                  const gameStartedData = {
+                                    roomId: data.roomId,
+                                    roomName: data.roomName,
+                                    gameSessionId: data.gameSessionId
+                                  };
+                                  console.log('🎮 [CLIENT] Émission événement game_started:', JSON.stringify(gameStartedData, null, 2));
+                                  console.log('🎮 [CLIENT] Socket connecté?', socket?.connected);
+
+                                  // Émettre l'événement socket pour rediriger tous les membres
+                                  socket?.emit('game_started', gameStartedData);
+
+                                  // Rediriger vers la page de jeu avec reload
+                                  const gameUrl = `/game/${encodeURIComponent(userRoom.room.name)}`;
+                                  console.log('🎮 [CLIENT] Redirection créateur vers:', gameUrl);
+                                  window.location.href = gameUrl;
+                                } else {
+                                  const error = await response.json();
+                                  console.error('🎮 [CLIENT] Erreur API:', error);
+                                  alert(error.error || 'Erreur lors du démarrage de la partie');
+                                }
+                              } catch (error) {
+                                console.error('Erreur lors du démarrage de la partie:', error);
+                                alert('Erreur lors du démarrage de la partie');
+                              }
                             }}
                             disabled={!selectedConfigId}
                             className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
@@ -502,7 +813,7 @@ export default function Home() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {gameConfigs.length > 0 && userRoom?.room?.isCreator && (
+                  {gameConfigs.length > 0 && userRoom?.room?.isCreator && !gameSession?.inGame && (
                     <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4">
                       <label className="block text-sm font-medium text-zinc-300 mb-2.5">
                         Configuration de jeu
@@ -564,7 +875,7 @@ export default function Home() {
                   )}
 
                   {/* Membres du salon */}
-                  <div className={`bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 ${!(gameConfigs.length > 0 && userRoom?.room?.isCreator) ? 'lg:col-span-2' : ''}`}>
+                  <div className={`bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 ${!(gameConfigs.length > 0 && userRoom?.room?.isCreator && !gameSession?.inGame) ? 'lg:col-span-2' : ''}`}>
                     <h4 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">
                       <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
                       Membres du salon ({roomMembers.length})
@@ -573,15 +884,27 @@ export default function Home() {
                       {roomMembers.map((member) => (
                         <div key={member.id} className="flex items-center justify-between text-xs bg-zinc-900/50 rounded px-3 py-2">
                           <div className="flex items-center gap-2">
+                            <Avatar src={member.profile_picture_url} name={member.name} size="xs" />
                             <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
                             <span className="text-zinc-200 font-medium">{member.name}</span>
                           </div>
-                          <span className="text-zinc-500">
-                            {new Date(member.joined_at).toLocaleTimeString('fr-FR', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-zinc-500">
+                              {new Date(member.joined_at).toLocaleTimeString('fr-FR', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                            {userRoom?.room?.isCreator && member.id !== session?.user?.id && !gameSession?.inGame && (
+                              <button
+                                onClick={() => kickMember(member.id)}
+                                className="px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
+                                title="Expulser ce membre"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -591,7 +914,7 @@ export default function Home() {
             )}
 
             {/* Formulaire de création de salon */}
-            {!userRoom?.inRoom && (
+            {!userRoom?.inRoom && (userRoles.includes('room_creator') || userRoles.includes('admin')) && (
               <form onSubmit={createRoom} className="mb-6">
                 <div className="flex gap-2">
                   <input
@@ -674,6 +997,7 @@ export default function Home() {
                               {roomMembers.map((member) => (
                                 <div key={member.id} className="flex items-center justify-between text-xs bg-zinc-700/30 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2">
+                                    <Avatar src={member.profile_picture_url} name={member.name} size="xs" />
                                     <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
                                     <span className="text-zinc-300">{member.name}</span>
                                   </div>
@@ -703,32 +1027,55 @@ export default function Home() {
               Votre session
             </h3>
             <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Pseudo</span>
-                <span className="text-zinc-200 font-medium">{session.user?.name}</span>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <Avatar
+                    src={currentUserProfile.profile_picture_url}
+                    name={session.user?.name || ''}
+                    size="lg"
+                  />
+                  <div>
+                    <p className="text-zinc-200 font-semibold text-base">{session.user?.name}</p>
+                    <p className="text-emerald-400 text-xs font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                      En ligne
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    // Nettoyer la session et notifier le serveur
+                    await fetch('/api/auth/signout-cleanup', { method: 'POST' });
+                    // Notifier les autres clients
+                    socket?.emit('refresh_online_users');
+                    signOut();
+                  }}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  Déconnexion
+                </button>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Statut</span>
-                <span className="text-emerald-400 font-medium flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-                  En ligne
-                </span>
-              </div>
-              <button
-                onClick={() => router.push('/configuration')}
-                className="mt-4 w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
-              >
-                Configuration de jeux
-              </button>
-              <button
-                onClick={async () => {
-                  await fetch('/api/auth/signout-cleanup', { method: 'POST' });
-                  signOut();
-                }}
-                className="w-full px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
-              >
-                Se déconnecter
-              </button>
+
+              {(userRoles.includes('config_creator') || userRoles.includes('admin') || userRoles.includes('admin')) && (
+                <div className="flex gap-2">
+                  {(userRoles.includes('config_creator') || userRoles.includes('admin')) && (
+                    <button
+                      onClick={() => router.push('/configuration')}
+                      className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
+                    >
+                      Configuration
+                    </button>
+                  )}
+                  {userRoles.includes('admin') && (
+                    <button
+                      onClick={() => router.push('/admin')}
+                      className="flex-1 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
+                    >
+                      Administration
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

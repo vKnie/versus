@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName } from '@/lib/db';
+import { withRateLimit } from '@/lib/rate-limit';
 
-export async function POST(req: NextRequest) {
+async function handleSendMessage(req: NextRequest) {
   try {
     const session = await getServerSession();
 
@@ -12,12 +13,18 @@ export async function POST(req: NextRequest) {
 
     const { message } = await req.json();
 
-    if (!message || message.trim().length === 0) {
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return NextResponse.json({ error: 'Message vide' }, { status: 400 });
     }
 
-    if (message.length > 500) {
-      return NextResponse.json({ error: 'Message trop long' }, { status: 400 });
+    // Sanitiser le message - enlever les caractères dangereux
+    const sanitizedMessage = message
+      .trim()
+      .replace(/[<>]/g, '') // Enlever < et > pour éviter le HTML
+      .substring(0, 500); // Limiter à 500 caractères
+
+    if (sanitizedMessage.length === 0) {
+      return NextResponse.json({ error: 'Message invalide' }, { status: 400 });
     }
 
     const userId = await getUserIdByName(session.user.name);
@@ -25,13 +32,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 400 });
     }
 
-    await query(
-      'INSERT INTO messages (user_id, message) VALUES (?, ?)',
-      [userId, message.trim()]
+    const result: any = await query(
+      'INSERT INTO messages (user_id, message, created_at) VALUES (?, ?, NOW())',
+      [userId, sanitizedMessage]
     );
 
-    return NextResponse.json({ success: true });
+    // Récupérer le message qu'on vient d'insérer avec toutes ses infos
+    const newMessage: any = await query(
+      `SELECT m.id, m.message, m.created_at, u.name as username, u.profile_picture_url
+       FROM messages m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.id = ?`,
+      [result.insertId]
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: newMessage[0]
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
+
+// Appliquer rate limiting : 30 messages max par minute (anti-spam)
+export const POST = withRateLimit(handleSendMessage, 30, 60000);

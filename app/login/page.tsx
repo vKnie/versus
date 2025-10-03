@@ -37,8 +37,8 @@ export default function LoginPage() {
       if (result?.error) {
         setError('Pseudo ou mot de passe incorrect');
       } else if (result?.ok) {
-        router.push('/');
-        router.refresh();
+        // Rediriger et forcer un reload complet de la page
+        window.location.href = '/';
       }
     } catch (error) {
       setError('Une erreur est survenue');

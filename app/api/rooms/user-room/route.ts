@@ -24,9 +24,11 @@ export async function GET() {
         r.id,
         r.name,
         r.created_by,
-        rm.joined_at
+        rm.joined_at,
+        u.name as created_by_name
       FROM room_members rm
       JOIN rooms r ON rm.room_id = r.id
+      JOIN users u ON r.created_by = u.id
       WHERE rm.user_id = ?
       LIMIT 1
     `, [userId]);
@@ -41,6 +43,7 @@ export async function GET() {
         id: membership[0].id,
         name: membership[0].name,
         isCreator: membership[0].created_by === userId,
+        created_by_name: membership[0].created_by_name,
         joined_at: membership[0].joined_at
       }
     });

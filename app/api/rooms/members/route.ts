@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
       SELECT
         u.id,
         u.name,
+        u.profile_picture_url,
         rm.joined_at
       FROM room_members rm
       JOIN users u ON rm.user_id = u.id

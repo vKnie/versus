@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { query, getUserIdByName } from '@/lib/db';
+import { query, getUserIdByName, userHasRole } from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -20,6 +20,14 @@ export async function POST(req: NextRequest) {
     const userId = await getUserIdByName(session.user.name);
     if (!userId) {
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
+    }
+
+    // Vérifier que l'utilisateur a le rôle config_creator ou admin
+    const hasConfigCreator = await userHasRole(userId, 'config_creator');
+    const hasAdmin = await userHasRole(userId, 'admin');
+
+    if (!hasConfigCreator && !hasAdmin) {
+      return NextResponse.json({ error: 'Vous n\'avez pas la permission de créer des configurations' }, { status: 403 });
     }
 
     // Créer le dossier de configurations s'il n'existe pas

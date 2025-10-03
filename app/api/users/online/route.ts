@@ -13,7 +13,7 @@ export async function GET() {
     await query('DELETE FROM sessions WHERE expires <= NOW()');
 
     const onlineUsers = await query(`
-      SELECT u.name, s.created_at as connected_since
+      SELECT u.name, u.in_game, u.profile_picture_url, s.created_at as connected_since
       FROM sessions s
       JOIN users u ON s.user_id = u.id
       WHERE s.expires > NOW()

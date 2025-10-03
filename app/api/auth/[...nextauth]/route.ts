@@ -43,21 +43,28 @@ const handler = NextAuth({
   pages: { signIn: '/login' },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+
+        // ✅ Créer la session EN DB immédiatement lors de la connexion
+        const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+        // Supprimer les anciennes sessions de cet utilisateur
+        await query('DELETE FROM sessions WHERE user_id = ?', [user.id]);
+
+        // Créer une nouvelle session fraîche
+        await query(
+          'INSERT INTO sessions (session_token, user_id, expires) VALUES (?, ?, ?)',
+          [`session_${user.id}_${Date.now()}`, user.id, expires]
+        );
+
+        console.log(`✅ Session DB créée pour l'utilisateur ${user.name} (ID: ${user.id})`);
+      }
       return token;
     },
     async session({ session, token }) {
       if (token?.id) {
         session.user.id = token.id as string;
-
-        // Session tracking en base
-        const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
-
-        await query('DELETE FROM sessions WHERE user_id = ?', [token.id]);
-        await query(
-          'INSERT INTO sessions (session_token, user_id, expires) VALUES (?, ?, ?)',
-          [`jwt_${token.id}_${Date.now()}`, token.id, expires]
-        );
       }
       return session;
     }

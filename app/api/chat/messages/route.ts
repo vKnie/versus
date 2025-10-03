@@ -14,14 +14,15 @@ export async function GET() {
         m.id,
         m.message,
         m.created_at,
-        u.name as username
+        u.name as username,
+        u.profile_picture_url
       FROM messages m
       JOIN users u ON m.user_id = u.id
-      ORDER BY m.created_at DESC
+      ORDER BY m.created_at ASC
       LIMIT 50
     `);
 
-    return NextResponse.json(messages.reverse());
+    return NextResponse.json(messages);
   } catch (error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }

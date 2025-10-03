@@ -39,6 +39,7 @@ export default function ConfigurationPage() {
   const [dbConfigs, setDbConfigs] = useState<any[]>([]);
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -47,6 +48,7 @@ export default function ConfigurationPage() {
     } else {
       fetchUsers();
       fetchDbConfigs();
+      fetchUserRole();
     }
   }, [session, status, router]);
 
@@ -69,6 +71,18 @@ export default function ConfigurationPage() {
       }
     } catch (error) {
       console.error('Erreur lors de la récupération des configurations:', error);
+    }
+  };
+
+  const fetchUserRole = async () => {
+    try {
+      const response = await fetch('/api/users/me');
+      if (response.ok) {
+        const data = await response.json();
+        setUserRoles(data.roles || []);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération du rôle utilisateur:', error);
     }
   };
 
@@ -242,7 +256,7 @@ export default function ConfigurationPage() {
           >
             ← Retour
           </button>
-          {!showCreateForm && (
+          {!showCreateForm && (userRoles.includes('config_creator') || userRoles.includes('admin')) && (
             <div className="flex gap-3">
               <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer">
                 <input

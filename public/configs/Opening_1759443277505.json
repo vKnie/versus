@@ -1,0 +1,23 @@
+{
+  "id": 1,
+  "name": "Opening",
+  "description": "Blabla test",
+  "items": [
+    {
+      "name": "Gurren Lagann Opening 1",
+      "youtubeLink": "https://youtu.be/FwgMxjhXkKo?si=co2jdCoqLYcIjEnu",
+      "proposedBy": [
+        "kevin"
+      ]
+    },
+    {
+      "name": "Black Clover Opening 10 | Black Catcher",
+      "youtubeLink": "https://youtu.be/XMeQeIG_rQg?si=wIgB0xNahkqADUA5",
+      "proposedBy": [
+        "kevin"
+      ]
+    }
+  ],
+  "createdAt": "2025-10-03T13:11:01.373Z",
+  "createdBy": "kevin"
+}
