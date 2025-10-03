@@ -71,6 +71,32 @@ export async function GET(req: NextRequest) {
     const currentDuel = duels[session_data.current_duel_index];
     const currentRound = tournamentData.currentRound;
 
+    // Récupérer les photos de profil des personnes qui ont proposé les items
+    const enrichDuelWithProfiles = async (duel: any) => {
+      const enrichItem = async (item: any) => {
+        const proposedByWithProfiles = await Promise.all(
+          item.proposedBy.map(async (name: string) => {
+            const userProfile: any = await query(
+              'SELECT name, profile_picture_url FROM users WHERE name = ?',
+              [name]
+            );
+            return {
+              name,
+              profilePictureUrl: userProfile.length > 0 ? userProfile[0].profile_picture_url : null
+            };
+          })
+        );
+        return { ...item, proposedBy: proposedByWithProfiles };
+      };
+
+      return {
+        item1: await enrichItem(duel.item1),
+        item2: await enrichItem(duel.item2)
+      };
+    };
+
+    const enrichedCurrentDuel = await enrichDuelWithProfiles(currentDuel);
+
     // Compter les joueurs du salon et récupérer le créateur
     const totalPlayers: any = await query(
       'SELECT COUNT(*) as count FROM room_members WHERE room_id = ?',
@@ -117,7 +143,7 @@ export async function GET(req: NextRequest) {
       status: session_data.status,
       currentDuelIndex: session_data.current_duel_index,
       totalDuels: duels.length,
-      currentDuel,
+      currentDuel: enrichedCurrentDuel,
       currentRound,
       totalRounds: tournamentData.totalRounds,
       votes: votes.length,

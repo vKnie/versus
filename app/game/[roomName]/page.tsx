@@ -22,6 +22,11 @@ interface TieBreaker {
   votes: number;
 }
 
+interface ProposedByUser {
+  name: string;
+  profilePictureUrl?: string | null;
+}
+
 interface GameState {
   gameSessionId: number;
   status: string;
@@ -31,12 +36,12 @@ interface GameState {
     item1: {
       name: string;
       youtubeLink: string;
-      proposedBy: string[];
+      proposedBy: ProposedByUser[];
     };
     item2: {
       name: string;
       youtubeLink: string;
-      proposedBy: string[];
+      proposedBy: ProposedByUser[];
     };
   };
   votes: number;
@@ -219,25 +224,16 @@ export default function GamePage() {
 
     // 🎬 Synchronisation vidéo - Play
     socket.on('video_play', (data: { videoIndex: number; timestamp: number }) => {
-      console.log(`▶️ Commande play reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (!player) {
-        console.error(`❌ Player ${data.videoIndex} non initialisé`);
-        return;
-      }
+      if (!player) return;
+
       if (typeof player.seekTo === 'function' && typeof player.playVideo === 'function') {
-        // D'abord chercher la position
         player.seekTo(data.timestamp, true);
-        // Attendre un peu que le seek soit effectif, puis lancer la vidéo
         setTimeout(() => {
           player.playVideo();
-          console.log(`✅ Play exécuté pour vidéo ${data.videoIndex}`);
-          // Vérifier que la vidéo joue vraiment
+          // Vérifier et réessayer si nécessaire
           setTimeout(() => {
-            const state = player.getPlayerState ? player.getPlayerState() : -1;
-            console.log(`🔍 État du player ${data.videoIndex}: ${state} (1=playing, 2=paused)`);
-            if (state !== 1) {
-              console.warn(`⚠️ La vidéo ${data.videoIndex} n'est pas en lecture, nouvelle tentative...`);
+            if (player.getPlayerState && player.getPlayerState() !== 1) {
               player.playVideo();
             }
           }, 200);
@@ -247,46 +243,32 @@ export default function GamePage() {
 
     // 🎬 Synchronisation vidéo - Pause
     socket.on('video_pause', (data: { videoIndex: number; timestamp: number }) => {
-      console.log(`⏸️ Commande pause reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (!player) {
-        console.error(`❌ Player ${data.videoIndex} non initialisé`);
-        return;
-      }
+      if (!player) return;
+
       if (typeof player.seekTo === 'function' && typeof player.pauseVideo === 'function') {
         player.seekTo(data.timestamp, true);
-        setTimeout(() => {
-          player.pauseVideo();
-          console.log(`✅ Pause exécuté pour vidéo ${data.videoIndex}`);
-        }, 150);
+        setTimeout(() => player.pauseVideo(), 150);
       }
     });
 
     // 🎬 Synchronisation vidéo - Seek
     socket.on('video_seek', (data: { videoIndex: number; timestamp: number }) => {
-      console.log(`⏩ Commande seek reçue: vidéo ${data.videoIndex} à ${data.timestamp}s`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (!player) {
-        console.error(`❌ Player ${data.videoIndex} non initialisé`);
-        return;
-      }
+      if (!player) return;
+
       if (typeof player.seekTo === 'function') {
         player.seekTo(data.timestamp, true);
-        console.log(`✅ Seek exécuté pour vidéo ${data.videoIndex}`);
       }
     });
 
     // 🎬 Synchronisation vidéo - Vitesse
     socket.on('video_rate_change', (data: { videoIndex: number; playbackRate: number }) => {
-      console.log(`⚡ Commande vitesse reçue: vidéo ${data.videoIndex} à ${data.playbackRate}x`);
       const player = data.videoIndex === 1 ? player1Ref.current : player2Ref.current;
-      if (!player) {
-        console.error(`❌ Player ${data.videoIndex} non initialisé`);
-        return;
-      }
+      if (!player) return;
+
       if (typeof player.setPlaybackRate === 'function') {
         player.setPlaybackRate(data.playbackRate);
-        console.log(`✅ Vitesse changée pour vidéo ${data.videoIndex}`);
       }
     });
 
@@ -311,11 +293,9 @@ export default function GamePage() {
     fetchGameState();
   }, [roomId]);
 
-  // ✅ Initialiser les players YouTube quand le duel change
+  // Initialiser les players YouTube quand le duel change
   useEffect(() => {
     if (!ytReady || !gameState?.currentDuel) return;
-
-    console.log('🎬 Initialisation des players YouTube pour duel:', gameState.currentDuelIndex);
     initializePlayers(gameState.currentDuel);
   }, [ytReady, gameState?.currentDuelIndex]);
 
@@ -424,33 +404,21 @@ export default function GamePage() {
     const videoId1 = extractYouTubeId(duel.item1.youtubeLink);
     const videoId2 = extractYouTubeId(duel.item2.youtubeLink);
 
-    // 🎬 Écouteurs pour synchronisation automatique (Maître du jeu uniquement)
+    // Écouteurs pour synchronisation automatique (Maître du jeu uniquement)
     const setupSyncListeners = (player: any, videoIndex: number) => {
       if (!gameState?.isGameMaster) return;
 
       let lastState = -1;
 
-      // Détecter les changements d'état (play/pause)
       const onStateChange = (event: any) => {
         const state = event.data;
+        const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
 
         // 1 = playing, 2 = paused
         if (state === 1 && lastState !== 1) {
-          const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
-          console.log(`🎮 Auto-sync: Play vidéo ${videoIndex} à ${currentTime}s`);
-          socket?.emit('video_play', {
-            roomId,
-            videoIndex,
-            timestamp: currentTime
-          });
+          socket?.emit('video_play', { roomId, videoIndex, timestamp: currentTime });
         } else if (state === 2 && lastState !== 2) {
-          const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
-          console.log(`🎮 Auto-sync: Pause vidéo ${videoIndex} à ${currentTime}s`);
-          socket?.emit('video_pause', {
-            roomId,
-            videoIndex,
-            timestamp: currentTime
-          });
+          socket?.emit('video_pause', { roomId, videoIndex, timestamp: currentTime });
         }
 
         lastState = state;
@@ -480,36 +448,6 @@ export default function GamePage() {
         events: {
           onReady: (event: any) => {
             console.log('✅ Player 1 prêt');
-
-            // Injecter CSS pour masquer les overlays directement dans l'iframe
-            try {
-              const iframe = document.querySelector('#player1 iframe') as HTMLIFrameElement;
-              if (iframe?.contentDocument || iframe?.contentWindow?.document) {
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                const style = iframeDoc.createElement('style');
-                style.textContent = `
-                  .ytp-pause-overlay, .ytp-pause-overlay-container, .ytp-chrome-top,
-                  .ytp-chrome-bottom, .ytp-share-button, .ytp-watch-later-button,
-                  .ytp-title, .ytp-watermark, .ytp-suggestions, .ytp-endscreen-content,
-                  .ytp-impression-link, [class*="ytp-"]:not(.html5-video-container) {
-                    display: none !important;
-                    visibility: hidden !important;
-                  }
-                `;
-                iframeDoc.head?.appendChild(style);
-                console.log('✅ CSS injecté dans iframe player 1');
-              }
-            } catch (e) {
-              console.log('⚠️ Impossible d\'injecter CSS (CORS):', e);
-            }
-
-            // Synchroniser avec le timestamp du serveur si disponible
-            if (gameState?.videoStartTime) {
-              const serverTime = new Date(gameState.videoStartTime).getTime();
-              const now = Date.now();
-              const elapsed = (now - serverTime) / 1000;
-              event.target.seekTo(elapsed, true);
-            }
 
             // Configurer les écouteurs de synchronisation
             setupSyncListeners(event.target, 1);
@@ -544,35 +482,6 @@ export default function GamePage() {
         events: {
           onReady: (event: any) => {
             console.log('✅ Player 2 prêt');
-
-            // Injecter CSS pour masquer les overlays directement dans l'iframe
-            try {
-              const iframe = document.querySelector('#player2 iframe') as HTMLIFrameElement;
-              if (iframe?.contentDocument || iframe?.contentWindow?.document) {
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                const style = iframeDoc.createElement('style');
-                style.textContent = `
-                  .ytp-pause-overlay, .ytp-pause-overlay-container, .ytp-chrome-top,
-                  .ytp-chrome-bottom, .ytp-share-button, .ytp-watch-later-button,
-                  .ytp-title, .ytp-watermark, .ytp-suggestions, .ytp-endscreen-content,
-                  .ytp-impression-link, [class*="ytp-"]:not(.html5-video-container) {
-                    display: none !important;
-                    visibility: hidden !important;
-                  }
-                `;
-                iframeDoc.head?.appendChild(style);
-                console.log('✅ CSS injecté dans iframe player 2');
-              }
-            } catch (e) {
-              console.log('⚠️ Impossible d\'injecter CSS (CORS):', e);
-            }
-
-            if (gameState?.videoStartTime) {
-              const serverTime = new Date(gameState.videoStartTime).getTime();
-              const now = Date.now();
-              const elapsed = (now - serverTime) / 1000;
-              event.target.seekTo(elapsed, true);
-            }
 
             // Configurer les écouteurs de synchronisation
             setupSyncListeners(event.target, 2);
@@ -941,15 +850,16 @@ export default function GamePage() {
               <h2 className="text-xl font-semibold text-zinc-200 mb-2">
                 {gameState.currentDuel.item1.name}
               </h2>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {gameState.currentDuel.item1.proposedBy.map((person, i) => (
-                  <span
-                    key={i}
-                    className="text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded"
-                  >
-                    {person}
-                  </span>
-                ))}
+              <div className="mb-4">
+                <p className="text-xs text-zinc-400 mb-2">Proposé par :</p>
+                <div className="flex flex-wrap gap-2">
+                  {gameState.currentDuel.item1.proposedBy.map((person, i) => (
+                    <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
+                      <Avatar src={person.profilePictureUrl} name={person.name} size="xs" />
+                      <span className="text-xs text-zinc-300">{person.name}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <button
@@ -1073,15 +983,16 @@ export default function GamePage() {
               <h2 className="text-xl font-semibold text-zinc-200 mb-2">
                 {gameState.currentDuel.item2.name}
               </h2>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {gameState.currentDuel.item2.proposedBy.map((person, i) => (
-                  <span
-                    key={i}
-                    className="text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded"
-                  >
-                    {person}
-                  </span>
-                ))}
+              <div className="mb-4">
+                <p className="text-xs text-zinc-400 mb-2">Proposé par :</p>
+                <div className="flex flex-wrap gap-2">
+                  {gameState.currentDuel.item2.proposedBy.map((person, i) => (
+                    <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
+                      <Avatar src={person.profilePictureUrl} name={person.name} size="xs" />
+                      <span className="text-xs text-zinc-300">{person.name}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <button
