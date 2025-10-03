@@ -436,28 +436,10 @@ export default function Home() {
 
     // Écouter le démarrage de partie pour rediriger automatiquement
     socket.on('game_started', (data: { roomId: number; roomName: string; gameSessionId: number }) => {
-      console.log('🎮 [CLIENT] Événement game_started reçu:', JSON.stringify(data, null, 2));
-      console.log('🎮 [CLIENT] userRoom:', JSON.stringify(userRoom, null, 2));
-      console.log('🎮 [CLIENT] userRoom?.inRoom:', userRoom?.inRoom);
-      console.log('🎮 [CLIENT] userRoom?.room?.id:', userRoom?.room?.id);
-      console.log('🎮 [CLIENT] data.roomId:', data.roomId);
-      console.log('🎮 [CLIENT] Comparaison:', userRoom?.room?.id === data.roomId);
-
       // Vérifier si l'utilisateur est dans ce salon avant de rediriger
       if (userRoom?.inRoom && userRoom.room.id === data.roomId) {
-        console.log('🎮 [CLIENT] ✅ Redirection vers la partie:', data.roomName);
         const gameUrl = `/game/${encodeURIComponent(data.roomName)}`;
-        console.log('🎮 [CLIENT] URL:', gameUrl);
         window.location.href = gameUrl; // Force un reload complet de la page
-      } else {
-        console.log('🎮 [CLIENT] ❌ Événement ignoré - utilisateur pas dans ce salon ou userRoom non chargé');
-        console.log('🎮 [CLIENT] Raison:', {
-          userRoomExists: !!userRoom,
-          inRoom: userRoom?.inRoom,
-          roomIdMatch: userRoom?.room?.id === data.roomId,
-          userRoomId: userRoom?.room?.id,
-          eventRoomId: data.roomId
-        });
       }
     });
 
@@ -751,10 +733,6 @@ export default function Home() {
                               }
 
                               try {
-                                console.log('🎮 [CLIENT] Démarrage de la partie...');
-                                console.log('🎮 [CLIENT] roomId:', userRoom.room.id);
-                                console.log('🎮 [CLIENT] configId:', selectedConfigId);
-
                                 const response = await fetch('/api/game/start', {
                                   method: 'POST',
                                   headers: {
@@ -768,26 +746,19 @@ export default function Home() {
 
                                 if (response.ok) {
                                   const data = await response.json();
-                                  console.log('🎮 [CLIENT] Réponse API reçue:', JSON.stringify(data, null, 2));
 
-                                  const gameStartedData = {
+                                  // Émettre l'événement socket pour rediriger tous les membres
+                                  socket?.emit('game_started', {
                                     roomId: data.roomId,
                                     roomName: data.roomName,
                                     gameSessionId: data.gameSessionId
-                                  };
-                                  console.log('🎮 [CLIENT] Émission événement game_started:', JSON.stringify(gameStartedData, null, 2));
-                                  console.log('🎮 [CLIENT] Socket connecté?', socket?.connected);
-
-                                  // Émettre l'événement socket pour rediriger tous les membres
-                                  socket?.emit('game_started', gameStartedData);
+                                  });
 
                                   // Rediriger vers la page de jeu avec reload
                                   const gameUrl = `/game/${encodeURIComponent(userRoom.room.name)}`;
-                                  console.log('🎮 [CLIENT] Redirection créateur vers:', gameUrl);
                                   window.location.href = gameUrl;
                                 } else {
                                   const error = await response.json();
-                                  console.error('🎮 [CLIENT] Erreur API:', error);
                                   alert(error.error || 'Erreur lors du démarrage de la partie');
                                 }
                               } catch (error) {

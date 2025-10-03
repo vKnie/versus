@@ -354,25 +354,14 @@ app.prepare().then(() => {
       const { roomId, roomName, gameSessionId } = data;
       const roomSocketName = `game_room_${roomId}`;
 
-      console.log(`🎮 [SERVER] Événement game_started reçu:`, JSON.stringify(data, null, 2));
-      console.log(`🎮 [SERVER] Broadcasting à la room: ${roomSocketName}`);
-
-      // Broadcaster à la room spécifique
-      io.to(roomSocketName).emit('game_started', {
-        roomId,
-        roomName,
-        gameSessionId
-      });
-
-      // Broadcaster aussi globalement pour être sûr que tous les membres reçoivent l'événement
-      console.log('🎮 [SERVER] Broadcasting globalement à tous les clients');
+      // Broadcaster globalement à tous les clients
       io.emit('game_started', {
         roomId,
         roomName,
         gameSessionId
       });
 
-      console.log(`🎮 [SERVER] Partie démarrée dans le salon ${roomName} - Redirection des membres`);
+      console.log(`🎮 Partie démarrée: ${roomName} (session ${gameSessionId})`);
     });
 
     // ✅ Room créée/supprimée/modifiée - Broadcaster à tous
