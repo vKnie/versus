@@ -465,18 +465,44 @@ export default function GamePage() {
         width: '100%',
         videoId: videoId1,
         playerVars: {
-          autoplay: 0, // Pas d'autoplay au chargement
-          mute: 1, // Démarrer en muet pour permettre l'autoplay ultérieur
-          controls: 0, // Pas de contrôles YouTube natifs
-          disablekb: 1, // Désactiver clavier
-          fs: 0, // Pas de plein écran
+          autoplay: 0,
+          mute: 1,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
           modestbranding: 1,
-          iv_load_policy: 3, // Masquer les annotations
-          rel: 0, // Ne pas montrer de vidéos similaires
+          iv_load_policy: 3,
+          rel: 0,
+          showinfo: 0,
+          playsinline: 1,
+          enablejsapi: 1,
         },
         events: {
           onReady: (event: any) => {
             console.log('✅ Player 1 prêt');
+
+            // Injecter CSS pour masquer les overlays directement dans l'iframe
+            try {
+              const iframe = document.querySelector('#player1 iframe') as HTMLIFrameElement;
+              if (iframe?.contentDocument || iframe?.contentWindow?.document) {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                const style = iframeDoc.createElement('style');
+                style.textContent = `
+                  .ytp-pause-overlay, .ytp-pause-overlay-container, .ytp-chrome-top,
+                  .ytp-chrome-bottom, .ytp-share-button, .ytp-watch-later-button,
+                  .ytp-title, .ytp-watermark, .ytp-suggestions, .ytp-endscreen-content,
+                  .ytp-impression-link, [class*="ytp-"]:not(.html5-video-container) {
+                    display: none !important;
+                    visibility: hidden !important;
+                  }
+                `;
+                iframeDoc.head?.appendChild(style);
+                console.log('✅ CSS injecté dans iframe player 1');
+              }
+            } catch (e) {
+              console.log('⚠️ Impossible d\'injecter CSS (CORS):', e);
+            }
+
             // Synchroniser avec le timestamp du serveur si disponible
             if (gameState?.videoStartTime) {
               const serverTime = new Date(gameState.videoStartTime).getTime();
@@ -503,18 +529,44 @@ export default function GamePage() {
         width: '100%',
         videoId: videoId2,
         playerVars: {
-          autoplay: 0, // Pas d'autoplay au chargement
-          mute: 1, // Démarrer en muet pour permettre l'autoplay ultérieur
-          controls: 0, // Pas de contrôles YouTube natifs
-          disablekb: 1, // Désactiver clavier
-          fs: 0, // Pas de plein écran
+          autoplay: 0,
+          mute: 1,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
           modestbranding: 1,
-          iv_load_policy: 3, // Masquer les annotations
-          rel: 0, // Ne pas montrer de vidéos similaires
+          iv_load_policy: 3,
+          rel: 0,
+          showinfo: 0,
+          playsinline: 1,
+          enablejsapi: 1,
         },
         events: {
           onReady: (event: any) => {
             console.log('✅ Player 2 prêt');
+
+            // Injecter CSS pour masquer les overlays directement dans l'iframe
+            try {
+              const iframe = document.querySelector('#player2 iframe') as HTMLIFrameElement;
+              if (iframe?.contentDocument || iframe?.contentWindow?.document) {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                const style = iframeDoc.createElement('style');
+                style.textContent = `
+                  .ytp-pause-overlay, .ytp-pause-overlay-container, .ytp-chrome-top,
+                  .ytp-chrome-bottom, .ytp-share-button, .ytp-watch-later-button,
+                  .ytp-title, .ytp-watermark, .ytp-suggestions, .ytp-endscreen-content,
+                  .ytp-impression-link, [class*="ytp-"]:not(.html5-video-container) {
+                    display: none !important;
+                    visibility: hidden !important;
+                  }
+                `;
+                iframeDoc.head?.appendChild(style);
+                console.log('✅ CSS injecté dans iframe player 2');
+              }
+            } catch (e) {
+              console.log('⚠️ Impossible d\'injecter CSS (CORS):', e);
+            }
+
             if (gameState?.videoStartTime) {
               const serverTime = new Date(gameState.videoStartTime).getTime();
               const now = Date.now();
@@ -738,64 +790,15 @@ export default function GamePage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 p-4">
-      {/* CSS pour masquer les overlays YouTube */}
+      {/* Note: Les overlays YouTube ne peuvent pas être masqués via CSS externe car ils sont dans une iframe avec CORS.
+          La couche de protection transparente empêche tous les clics, rendant les overlays inutilisables. */}
       <style jsx global>{`
-        /* Masquer tous les overlays et boutons YouTube */
-        .ytp-pause-overlay,
-        .ytp-scroll-min,
-        .ytp-show-cards-title,
-        .ytp-ce-element,
-        .ytp-cards-teaser,
-        .ytp-endscreen-content,
-        .ytp-chrome-top,
-        .ytp-gradient-top,
-        .ytp-chrome-bottom,
-        .ytp-gradient-bottom,
-        .ytp-watermark,
-        .ytp-paid-content-overlay,
-        .ytp-suggested-action,
-        .ytp-share-button-visible,
-        .ytp-share-panel,
-        .ytp-watch-later-button,
-        .ytp-watch-later-icon,
-        .iv-branding,
-        .ytp-cards-button,
-        .ytp-cards-teaser,
-        .annotation,
-        .ytp-upnext,
-        .ytp-title-channel,
-        .ytp-tooltip,
-        .ytp-impression-link,
-        .ytp-cued-thumbnail-overlay,
-        .ytp-related-on-error-overlay,
-        .ytp-button[aria-label*="Partager"],
-        .ytp-button[aria-label*="Share"],
-        .ytp-button[aria-label*="Regarder"],
-        .ytp-button[aria-label*="Watch"],
-        a[class*="ytp"] {
-          display: none !important;
-          opacity: 0 !important;
-          visibility: hidden !important;
-          pointer-events: none !important;
+        /* Cacher le curseur pointer sur les vidéos pour montrer qu'elles ne sont pas cliquables */
+        #player1, #player2 {
+          cursor: default !important;
         }
-
-        /* Masquer tout ce qui apparaît en hover sur la vidéo */
-        .ytp-chrome-top-buttons,
-        .ytp-title,
-        .ytp-title-text,
-        .ytp-title-link,
-        .ytp-title-channel-logo,
-        .ytp-title-expanded-overlay,
-        .ytp-contextmenu {
-          display: none !important;
-          opacity: 0 !important;
-          visibility: hidden !important;
-        }
-
-        /* Forcer la suppression des boutons même s'ils changent de classe */
-        .html5-video-player .ytp-chrome-top *:not(.ytp-time-display),
-        .html5-video-player .ytp-chrome-bottom *:not(.ytp-progress-bar):not(.ytp-time-display) {
-          display: none !important;
+        #player1 *, #player2 * {
+          cursor: default !important;
         }
       `}</style>
       <div className="max-w-7xl mx-auto">
