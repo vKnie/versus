@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName, userHasRole } from '@/lib/db';
+import fs from 'fs/promises';
+import path from 'path';
 
 export async function PUT(req: NextRequest) {
   try {
@@ -24,6 +26,30 @@ export async function PUT(req: NextRequest) {
 
     if (!targetUserId) {
       return NextResponse.json({ error: 'ID utilisateur requis' }, { status: 400 });
+    }
+
+    // Récupérer l'ancienne photo de profil
+    const userResult: any = await query(
+      'SELECT profile_picture_url FROM users WHERE id = ?',
+      [targetUserId]
+    );
+
+    if (userResult.length === 0) {
+      return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
+    }
+
+    const oldProfilePictureUrl = userResult[0].profile_picture_url;
+
+    // Supprimer l'ancienne image si elle existe et qu'elle est locale
+    if (oldProfilePictureUrl && oldProfilePictureUrl.startsWith('/uploads/')) {
+      try {
+        const oldImagePath = path.join(process.cwd(), 'public', oldProfilePictureUrl);
+        await fs.unlink(oldImagePath);
+        console.log(`✅ Ancienne image supprimée: ${oldProfilePictureUrl}`);
+      } catch (error) {
+        console.error('Erreur lors de la suppression de l\'ancienne image:', error);
+        // Ne pas bloquer la mise à jour si la suppression échoue
+      }
     }
 
     // Mettre à jour la photo de profil

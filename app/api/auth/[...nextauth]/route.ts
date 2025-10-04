@@ -65,6 +65,18 @@ const handler = NextAuth({
     async session({ session, token }) {
       if (token?.id) {
         session.user.id = token.id as string;
+
+        // ✅ Vérifier si la session existe toujours en base de données
+        const dbSession = await queryOne(
+          'SELECT * FROM sessions WHERE user_id = ? AND expires > NOW()',
+          [token.id]
+        );
+
+        // Si la session n'existe plus en DB, on invalide la session
+        if (!dbSession) {
+          console.log(`⚠️ Session expirée ou supprimée pour l'utilisateur ${token.id}`);
+          throw new Error('Session invalidée');
+        }
       }
       return session;
     }

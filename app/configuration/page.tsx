@@ -93,6 +93,13 @@ export default function ConfigurationPage() {
       return;
     }
 
+    // Vérifier que le nombre d'items est une puissance de 2
+    const isPowerOfTwo = (n: number) => n > 0 && (n & (n - 1)) === 0;
+    if (!isPowerOfTwo(items.length)) {
+      alert(`Le nombre d'items doit être une puissance de 2 (2, 4, 8, 16, 32, 64, 128, 256...). Vous avez actuellement ${items.length} items.`);
+      return;
+    }
+
     const newConfig: GameConfig = {
       id: editingConfigId || Date.now().toString(),
       name: gameName.trim(),
