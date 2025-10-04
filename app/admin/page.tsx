@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { ArrowLeft, UserPlus, Save, X, Edit2, Trash2, UserCog, Shield, Upload, Camera } from 'lucide-react';
 
 interface User {
   id: number;
@@ -307,16 +308,18 @@ export default function AdminPage() {
         <div className="mb-6 flex items-center justify-between">
           <button
             onClick={() => router.push('/')}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors cursor-pointer"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
           >
-            ← Retour
+            <ArrowLeft className="w-4 h-4" />
+            Retour
           </button>
           {!showCreateForm && (
             <button
               onClick={() => setShowCreateForm(true)}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
             >
-              + Créer un utilisateur
+              <UserPlus className="w-4 h-4" />
+              Créer un utilisateur
             </button>
           )}
         </div>
@@ -408,9 +411,14 @@ export default function AdminPage() {
                   <button
                     type="submit"
                     disabled={creating}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                   >
-                    {creating ? 'Création...' : 'Créer'}
+                    {creating ? 'Création...' : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        Créer
+                      </>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -420,8 +428,9 @@ export default function AdminPage() {
                       setNewPassword('');
                       setNewUserRoles([]);
                     }}
-                    className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                   >
+                    <X className="w-4 h-4" />
                     Annuler
                   </button>
                 </div>
@@ -442,8 +451,9 @@ export default function AdminPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => updateUserRoles(user.id)}
-                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
                         >
+                          <Save className="w-3.5 h-3.5" />
                           Sauvegarder
                         </button>
                         <button
@@ -581,14 +591,16 @@ export default function AdminPage() {
                           setEditPassword('');
                           setEditProfilePicture(user.profile_picture_url || '');
                         }}
-                        className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                        className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
                       >
+                        <Edit2 className="w-3.5 h-3.5" />
                         Modifier
                       </button>
                       <button
                         onClick={() => deleteUser(user.id, user.name)}
-                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
                       >
+                        <Trash2 className="w-3.5 h-3.5" />
                         Supprimer
                       </button>
                     </div>

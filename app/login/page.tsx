@@ -4,6 +4,7 @@ import { signIn, getSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { LogIn, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -58,7 +59,8 @@ export default function LoginPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 shadow-lg">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="text-red-300 text-sm bg-red-950/50 border border-red-800/50 rounded-md px-3 py-2">
+              <div className="text-red-300 text-sm bg-red-950/50 border border-red-800/50 rounded-md px-3 py-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
                 {error}
               </div>
             )}
@@ -96,9 +98,14 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-6 px-4 py-2.5 bg-zinc-100 text-zinc-900 text-sm font-medium rounded-md hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer transition-all shadow-sm"
+              className="w-full mt-6 px-4 py-2.5 bg-zinc-100 text-zinc-900 text-sm font-medium rounded-md hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed cursor-pointer transition-all shadow-sm flex items-center justify-center gap-2"
             >
-              {loading ? 'Connexion...' : 'Se connecter'}
+              {loading ? 'Connexion...' : (
+                <>
+                  <LogIn className="w-4 h-4" />
+                  Se connecter
+                </>
+              )}
             </button>
           </form>
         </div>

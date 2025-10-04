@@ -29,6 +29,7 @@ interface ProposedByUser {
 }
 
 interface GameState {
+  [x: string]: any;
   gameSessionId: number;
   status: string;
   currentDuelIndex: number;

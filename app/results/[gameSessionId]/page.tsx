@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Avatar from '@/components/Avatar';
+import { Home, ArrowLeft, Play, ExternalLink, Trophy } from 'lucide-react';
 
 interface DuelResult {
   duelIndex: number;
@@ -230,8 +231,9 @@ export default function ResultsPage() {
                                 href={duel.item1.youtubeLink}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-center transition-colors cursor-pointer"
+                                className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-center transition-colors cursor-pointer flex items-center gap-1.5 justify-center"
                               >
+                                <Play className="w-3 h-3" />
                                 Voir la vidéo
                               </a>
                             </div>
@@ -307,8 +309,9 @@ export default function ResultsPage() {
                                 href={duel.item2.youtubeLink}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-center transition-colors cursor-pointer"
+                                className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-center transition-colors cursor-pointer flex items-center gap-1.5 justify-center"
                               >
+                                <Play className="w-3 h-3" />
                                 Voir la vidéo
                               </a>
                             </div>
@@ -327,8 +330,9 @@ export default function ResultsPage() {
         <div className="mt-6">
           <button
             onClick={() => router.push('/')}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm rounded-lg transition-colors cursor-pointer"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm rounded-lg transition-colors cursor-pointer flex items-center gap-2"
           >
+            <Home className="w-4 h-4" />
             Retour à l'accueil
           </button>
         </div>

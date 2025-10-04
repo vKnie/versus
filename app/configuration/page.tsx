@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { ArrowLeft, Upload, Plus, PlusSquare, Edit2, Trash2, Save, X, Download, Settings } from 'lucide-react';
 
 interface GameItem {
   name: string;
@@ -252,9 +253,10 @@ export default function ConfigurationPage() {
         <div className="mb-6 flex items-center justify-between">
           <button
             onClick={() => router.push('/')}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors cursor-pointer"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
           >
-            ← Retour
+            <ArrowLeft className="w-4 h-4" />
+            Retour
           </button>
           {!showCreateForm && (userRoles.includes('config_creator') || userRoles.includes('admin')) && (
             <div className="flex gap-3">
@@ -265,13 +267,15 @@ export default function ConfigurationPage() {
                   onChange={importConfig}
                   className="hidden"
                 />
+                <Upload className="w-4 h-4" />
                 Importer configuration
               </label>
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
               >
-                + Nouvelle configuration
+                <Plus className="w-4 h-4" />
+                Nouvelle configuration
               </button>
             </div>
           )}
@@ -319,9 +323,10 @@ export default function ConfigurationPage() {
                 </label>
                 <button
                   onClick={() => setShowAddItemModal(true)}
-                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer mb-3"
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer mb-3 flex items-center justify-center gap-2"
                 >
-                  + Ajouter un item
+                  <PlusSquare className="w-4 h-4" />
+                  Ajouter un item
                 </button>
 
                 <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
@@ -374,14 +379,16 @@ export default function ConfigurationPage() {
                           <div className="flex flex-col gap-2 flex-shrink-0">
                             <button
                               onClick={() => editItem(index)}
-                              className="text-blue-400 hover:text-blue-300 text-sm font-medium cursor-pointer whitespace-nowrap"
+                              className="text-blue-400 hover:text-blue-300 text-sm font-medium cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                             >
+                              <Edit2 className="w-3.5 h-3.5" />
                               Modifier
                             </button>
                             <button
                               onClick={() => removeItem(index)}
-                              className="text-red-400 hover:text-red-300 text-sm font-medium cursor-pointer whitespace-nowrap"
+                              className="text-red-400 hover:text-red-300 text-sm font-medium cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                             >
+                              <Trash2 className="w-3.5 h-3.5" />
                               Supprimer
                             </button>
                           </div>
@@ -395,14 +402,16 @@ export default function ConfigurationPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={saveConfig}
-                  className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors cursor-pointer"
+                  className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
+                  <Save className="w-4 h-4" />
                   Sauvegarder
                 </button>
                 <button
                   onClick={resetForm}
-                  className="px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-medium rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                 >
+                  <X className="w-4 h-4" />
                   Annuler
                 </button>
               </div>
@@ -444,15 +453,17 @@ export default function ConfigurationPage() {
                         <a
                           href={config.file_path}
                           download
-                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-colors cursor-pointer flex items-center gap-1.5"
                         >
+                          <Download className="w-3.5 h-3.5" />
                           Télécharger
                         </a>
                         {(userRoles.includes('config_creator') || userRoles.includes('admin')) && (
                           <button
                             onClick={() => editConfig(config.id, config.file_path)}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors cursor-pointer flex items-center gap-1.5"
                           >
+                            <Edit2 className="w-3.5 h-3.5" />
                             Modifier
                           </button>
                         )}
@@ -475,8 +486,9 @@ export default function ConfigurationPage() {
                                 console.error('Erreur lors de la suppression:', error);
                               }
                             }}
-                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors cursor-pointer flex items-center gap-1.5"
                           >
+                            <Trash2 className="w-3.5 h-3.5" />
                             Supprimer
                           </button>
                         )}
@@ -551,8 +563,9 @@ export default function ConfigurationPage() {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={addItem}
-                  className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors cursor-pointer"
+                  className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
+                  <Plus className="w-4 h-4" />
                   Ajouter
                 </button>
                 <button
@@ -562,8 +575,9 @@ export default function ConfigurationPage() {
                     setItemYoutubeLink('');
                     setItemProposedBy([]);
                   }}
-                  className="px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-medium rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                 >
+                  <X className="w-4 h-4" />
                   Annuler
                 </button>
               </div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Avatar from '@/components/Avatar';
 import { useSocket, useGameRoom } from '@/lib/useSocket';
+import { Send, ArrowLeft, LogIn, X, LogOut, Play, Trash2, Plus, UserPlus, Users, Eye, EyeOff, Settings, Shield, MessageSquare, UserCheck, Home as HomeIcon, UserMinus, Loader2, Gamepad, Crown, FileText, ChevronDown } from 'lucide-react';
 
 interface OnlineUser {
   name: string;
@@ -554,7 +555,7 @@ export default function Home() {
             {/* En-tête du chat */}
             <div className="p-4 border-b border-zinc-800/60">
               <h3 className="font-semibold text-zinc-200 flex items-center gap-2">
-                <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+                <MessageSquare className="w-4 h-4 text-blue-400" />
                 Chat en direct
               </h3>
             </div>
@@ -622,9 +623,14 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={!newMessage.trim() || sending || !canSendMessage}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors text-sm cursor-pointer"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors text-sm cursor-pointer flex items-center gap-2"
                 >
-                  {!canSendMessage ? `${cooldownTime}s` : sending ? 'Envoi...' : 'Envoyer'}
+                  {!canSendMessage ? `${cooldownTime}s` : sending ? 'Envoi...' : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Envoyer
+                    </>
+                  )}
                 </button>
               </form>
             </div>
@@ -633,7 +639,7 @@ export default function Home() {
           {/* Utilisateurs en ligne */}
           <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-5 shadow-xl">
             <h3 className="font-semibold text-zinc-200 mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+              <UserCheck className="w-4 h-4 text-blue-400" />
               Utilisateurs connectés
             </h3>
             <div>
@@ -681,7 +687,7 @@ export default function Home() {
           {/* Section des salons */}
           <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-5 shadow-xl lg:col-span-2">
             <h3 className="font-semibold text-zinc-200 mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
+              <HomeIcon className="w-4 h-4 text-purple-400" />
               Salons de jeux
             </h3>
 
@@ -721,8 +727,9 @@ export default function Home() {
                               const gameUrl = `/game/${encodeURIComponent(gameSession.roomName!)}`;
                               window.location.href = gameUrl; // Force un reload complet de la page
                             }}
-                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap animate-pulse"
+                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap animate-pulse flex items-center gap-2"
                           >
+                            <LogIn className="w-4 h-4" />
                             Rejoindre
                           </button>
                           {userRoom?.room?.isCreator && (
@@ -757,8 +764,9 @@ export default function Home() {
                                   console.error('Erreur lors de l\'annulation de la partie:', error);
                                 }
                               }}
-                              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
                             >
+                              <X className="w-4 h-4" />
                               Annuler la partie
                             </button>
                           )}
@@ -767,8 +775,9 @@ export default function Home() {
                       {!gameSession?.inGame && !userRoom?.room?.isCreator && (
                         <button
                           onClick={leaveRoom}
-                          className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                          className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                         >
+                          <LogOut className="w-4 h-4" />
                           Quitter
                         </button>
                       )}
@@ -816,14 +825,16 @@ export default function Home() {
                               }
                             }}
                             disabled={!selectedConfigId}
-                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                           >
+                            <Play className="w-4 h-4" />
                             Commencer la partie
                           </button>
                           <button
                             onClick={() => deleteRoom(userRoom.room.id)}
-                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                           >
+                            <Trash2 className="w-4 h-4" />
                             Supprimer
                           </button>
                         </>
@@ -835,7 +846,8 @@ export default function Home() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   {gameConfigs.length > 0 && userRoom?.room?.isCreator && !gameSession?.inGame && (
                     <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4">
-                      <label className="block text-sm font-medium text-zinc-300 mb-2.5">
+                      <label className="block text-sm font-medium text-zinc-300 mb-2.5 flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
                         Configuration de jeu
                       </label>
                       <div className="relative" ref={configDropdownRef}>
@@ -897,7 +909,7 @@ export default function Home() {
                   {/* Membres du salon */}
                   <div className={`bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 ${!(gameConfigs.length > 0 && userRoom?.room?.isCreator && !gameSession?.inGame) ? 'lg:col-span-2' : ''}`}>
                     <h4 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">
-                      <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                      <Users className="w-4 h-4 text-emerald-400" />
                       Membres du salon ({roomMembers.length})
                     </h4>
                     <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
@@ -921,7 +933,7 @@ export default function Home() {
                                 className="px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
                                 title="Expulser ce membre"
                               >
-                                ✕
+                                <UserMinus className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </div>
@@ -949,9 +961,14 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={!newRoomName.trim() || creatingRoom}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors text-sm cursor-pointer"
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors text-sm cursor-pointer flex items-center gap-2"
                   >
-                    {creatingRoom ? 'Création...' : 'Créer'}
+                    {creatingRoom ? 'Création...' : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        Créer
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -1007,8 +1024,9 @@ export default function Home() {
                             {!userRoom?.inRoom && !room.has_active_game && (
                               <button
                                 onClick={() => joinRoom(room.id)}
-                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-colors cursor-pointer flex items-center gap-1.5"
                               >
+                                <UserPlus className="w-3.5 h-3.5" />
                                 Rejoindre
                               </button>
                             )}
@@ -1048,7 +1066,7 @@ export default function Home() {
           {/* Informations de session */}
           <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-5 shadow-xl">
             <h3 className="font-semibold text-zinc-200 mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+              <UserCheck className="w-4 h-4 text-emerald-400" />
               Votre session
             </h3>
             <div className="space-y-3 text-sm">
@@ -1075,8 +1093,9 @@ export default function Home() {
                     socket?.emit('refresh_online_users');
                     signOut();
                   }}
-                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                 >
+                  <LogOut className="w-3.5 h-3.5" />
                   Déconnexion
                 </button>
               </div>
@@ -1086,16 +1105,18 @@ export default function Home() {
                   {(userRoles.includes('config_creator') || userRoles.includes('admin')) && (
                     <button
                       onClick={() => router.push('/configuration')}
-                      className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
+                      className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg flex items-center justify-center gap-2"
                     >
+                      <Settings className="w-4 h-4" />
                       Configuration
                     </button>
                   )}
                   {userRoles.includes('admin') && (
                     <button
                       onClick={() => router.push('/admin')}
-                      className="flex-1 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg"
+                      className="flex-1 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-all duration-200 cursor-pointer hover:shadow-lg flex items-center justify-center gap-2"
                     >
+                      <Shield className="w-4 h-4" />
                       Administration
                     </button>
                   )}
@@ -1107,4 +1128,8 @@ export default function Home() {
       </div>
     </div>
   );
+}
+
+function checkUserRoom() {
+  throw new Error('Function not implemented.');
 }
