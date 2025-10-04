@@ -9,6 +9,19 @@ interface User {
   password: string;
 }
 
+// Vérifier que NEXTAUTH_SECRET est défini et sécurisé
+if (!process.env.NEXTAUTH_SECRET) {
+  throw new Error('NEXTAUTH_SECRET must be set in environment variables');
+}
+
+if (process.env.NEXTAUTH_SECRET === 'your-super-secret-key-change-in-production') {
+  throw new Error('NEXTAUTH_SECRET must be changed from the default value. Generate a secure random string.');
+}
+
+if (process.env.NEXTAUTH_SECRET.length < 32) {
+  throw new Error('NEXTAUTH_SECRET must be at least 32 characters long for security');
+}
+
 const handler = NextAuth({
   providers: [
     CredentialsProvider({

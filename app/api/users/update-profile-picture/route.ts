@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName, userHasRole } from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
+import type { DBUser } from '@/types/db';
 
 export async function PUT(req: NextRequest) {
   try {
@@ -29,7 +30,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Récupérer l'ancienne photo de profil
-    const userResult: any = await query(
+    const userResult = await query<Pick<DBUser, 'profile_picture_url'>>(
       'SELECT profile_picture_url FROM users WHERE id = ?',
       [targetUserId]
     );
@@ -44,6 +45,15 @@ export async function PUT(req: NextRequest) {
     if (oldProfilePictureUrl && oldProfilePictureUrl.startsWith('/uploads/')) {
       try {
         const oldImagePath = path.join(process.cwd(), 'public', oldProfilePictureUrl);
+        const resolvedPath = path.resolve(oldImagePath);
+        const uploadsDir = path.resolve(path.join(process.cwd(), 'public', 'uploads'));
+
+        // Vérifier que le chemin résolu reste dans le dossier uploads (protection path traversal)
+        if (!resolvedPath.startsWith(uploadsDir)) {
+          console.error(`⚠️ Tentative de path traversal détectée: ${oldProfilePictureUrl}`);
+          return NextResponse.json({ error: 'Chemin de fichier invalide' }, { status: 400 });
+        }
+
         await fs.unlink(oldImagePath);
         console.log(`✅ Ancienne image supprimée: ${oldProfilePictureUrl}`);
       } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName, userHasRole } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import type { DBUser, MySQLResultSetHeader } from '@/types/db';
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Vérifier si l'utilisateur existe déjà
-    const existingUser: any = await query(
+    const existingUser = await query<Pick<DBUser, 'id'>>(
       'SELECT id FROM users WHERE name = ?',
       [username]
     );
@@ -67,12 +68,12 @@ export async function POST(req: NextRequest) {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Créer l'utilisateur
-    const result: any = await query(
+    const result = await query<MySQLResultSetHeader>(
       'INSERT INTO users (name, password, profile_picture_url) VALUES (?, ?, ?)',
       [username, hashedPassword, profilePictureUrl || null]
     );
 
-    const newUserId = result.insertId;
+    const newUserId = (result as unknown as MySQLResultSetHeader).insertId;
 
     // Ajouter les rôles si fournis
     if (roles && Array.isArray(roles) && roles.length > 0) {

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { query, getUserIdByName } from '@/lib/db';
+import { query, getUserIdByName, getPool } from '@/lib/db';
 import { withRateLimit } from '@/lib/rate-limit';
 import { saveGameHistory } from '@/lib/game-utils';
 
 async function handleVote(req: NextRequest) {
+  const connection = await getPool().getConnection();
+
   try {
     const session = await getServerSession();
     if (!session || !session.user?.name) {
@@ -22,29 +24,35 @@ async function handleVote(req: NextRequest) {
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
     }
 
+    // ✅ Démarrer une transaction pour garantir l'atomicité
+    await connection.beginTransaction();
+
     // Vérifier que la session de jeu existe et est en cours
-    const gameSession: any = await query(
+    const [gameSession]: any = await connection.execute(
       'SELECT id, status, current_duel_index, duels_data FROM game_sessions WHERE id = ? AND status = \'in_progress\'',
       [gameSessionId]
     );
 
     if (gameSession.length === 0) {
+      await connection.rollback();
       return NextResponse.json({ error: 'Session de jeu non trouvée ou terminée' }, { status: 404 });
     }
 
     // Vérifier que le duelIndex correspond au duel actuel
     if (gameSession[0].current_duel_index !== duelIndex) {
+      await connection.rollback();
       return NextResponse.json({ error: 'Ce duel n\'est plus actif' }, { status: 400 });
     }
 
     // Enregistrer le vote (si déjà voté, le UNIQUE constraint empêchera le doublon)
     try {
-      await query(
+      await connection.execute(
         `INSERT INTO votes (game_session_id, user_id, duel_index, item_voted)
          VALUES (?, ?, ?, ?)`,
         [gameSessionId, userId, duelIndex, itemVoted]
       );
     } catch (error: any) {
+      await connection.rollback();
       if (error.code === 'ER_DUP_ENTRY') {
         return NextResponse.json({ error: 'Vous avez déjà voté pour ce duel' }, { status: 400 });
       }
@@ -56,12 +64,12 @@ async function handleVote(req: NextRequest) {
     const roomId = tournamentData.roomId;
 
     // Vérifier si tous les joueurs ont voté
-    const voteCount: any = await query(
+    const [voteCount]: any = await connection.execute(
       'SELECT COUNT(*) as count FROM votes WHERE game_session_id = ? AND duel_index = ?',
       [gameSessionId, duelIndex]
     );
 
-    const totalPlayers: any = await query(
+    const [totalPlayers]: any = await connection.execute(
       'SELECT COUNT(*) as count FROM room_members WHERE room_id = ?',
       [roomId]
     );
@@ -70,7 +78,7 @@ async function handleVote(req: NextRequest) {
 
     if (allVoted) {
       // Récupérer le gagnant du duel
-      const voteResults: any = await query(
+      const [voteResults]: any = await connection.execute(
         'SELECT item_voted, COUNT(*) as votes FROM votes WHERE game_session_id = ? AND duel_index = ? GROUP BY item_voted ORDER BY votes DESC',
         [gameSessionId, duelIndex]
       );
@@ -139,11 +147,14 @@ async function handleVote(req: NextRequest) {
       };
 
       // Mettre à jour SEULEMENT les données du tournoi mais PAS le duel_index
-      await query(
+      await connection.execute(
         'UPDATE game_sessions SET duels_data = ? WHERE id = ?',
         [JSON.stringify(tournamentData), gameSessionId]
       );
     }
+
+    // ✅ Commit de la transaction si tout s'est bien passé
+    await connection.commit();
 
     return NextResponse.json({
       success: true,
@@ -151,8 +162,11 @@ async function handleVote(req: NextRequest) {
       message: 'Vote enregistré avec succès'
     });
   } catch (error) {
+    await connection.rollback();
     console.error('Erreur lors de l\'enregistrement du vote:', error);
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 

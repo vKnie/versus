@@ -13,7 +13,9 @@ const port = parseInt(process.env.PORT || '3000', 10);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// ✅ Utiliser le MÊME pool DB que lib/db.ts pour économiser les ressources
+// ✅ Configuration DB - Les mêmes paramètres que lib/db.ts
+// Note: On doit recréer le pool ici car server.js est en CommonJS et ne peut pas importer du TypeScript
+// IMPORTANT: Garder la même config que lib/db.ts pour éviter les incohérences
 const dbConfig = {
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -22,7 +24,7 @@ const dbConfig = {
   port: parseInt(process.env.DB_PORT || '3306'),
   charset: 'utf8mb4',
   waitForConnections: true,
-  connectionLimit: 15, // Pool unifié partagé avec les API routes
+  connectionLimit: 15,
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
@@ -30,7 +32,7 @@ const dbConfig = {
   maxIdle: 5,
 };
 
-let pool = mysql.createPool(dbConfig);
+const pool = mysql.createPool(dbConfig);
 
 app.prepare().then(() => {
   const httpServer = createServer(async (req, res) => {

@@ -2,9 +2,10 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Avatar from '@/components/Avatar';
-import { Home, ArrowLeft, Play, ExternalLink, Trophy } from 'lucide-react';
+import { Home, Play } from 'lucide-react';
+import Image from 'next/image';
 
 interface DuelResult {
   duelIndex: number;
@@ -44,17 +45,7 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true);
   const [expandedRounds, setExpandedRounds] = useState<{ [key: number]: boolean }>({});
 
-  useEffect(() => {
-    if (status === 'loading') return;
-    if (!session) {
-      router.push('/login');
-      return;
-    }
-
-    fetchResults();
-  }, [session, status, router, gameSessionId]);
-
-  const fetchResults = async () => {
+  const fetchResults = useCallback(async () => {
     try {
       const response = await fetch(`/api/game/results?gameSessionId=${gameSessionId}`);
       if (response.ok) {
@@ -78,7 +69,17 @@ export default function ResultsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [gameSessionId, router]);
+
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!session) {
+      router.push('/login');
+      return;
+    }
+
+    fetchResults();
+  }, [session, status, router, fetchResults]);
 
   const toggleRound = (round: number) => {
     setExpandedRounds(prev => ({
@@ -222,9 +223,11 @@ export default function ResultsPage() {
                           {/* Miniature YouTube à droite */}
                           {duel.item1.youtubeLink && extractYouTubeId(duel.item1.youtubeLink) && (
                             <div className="flex flex-col gap-1">
-                              <img
+                              <Image
                                 src={`https://img.youtube.com/vi/${extractYouTubeId(duel.item1.youtubeLink)}/mqdefault.jpg`}
                                 alt={duel.item1.name}
+                                width={128}
+                                height={80}
                                 className="w-32 h-20 object-cover rounded border border-zinc-700"
                               />
                               <a
@@ -300,9 +303,11 @@ export default function ResultsPage() {
                           {/* Miniature YouTube à droite */}
                           {duel.item2.youtubeLink && extractYouTubeId(duel.item2.youtubeLink) && (
                             <div className="flex flex-col gap-1">
-                              <img
+                              <Image
                                 src={`https://img.youtube.com/vi/${extractYouTubeId(duel.item2.youtubeLink)}/mqdefault.jpg`}
                                 alt={duel.item2.name}
+                                width={128}
+                                height={80}
                                 className="w-32 h-20 object-cover rounded border border-zinc-700"
                               />
                               <a

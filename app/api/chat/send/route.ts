@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName } from '@/lib/db';
 import { withRateLimit } from '@/lib/rate-limit';
+import validator from 'validator';
 
 async function handleSendMessage(req: NextRequest) {
   try {
@@ -17,11 +18,14 @@ async function handleSendMessage(req: NextRequest) {
       return NextResponse.json({ error: 'Message vide' }, { status: 400 });
     }
 
-    // Sanitiser le message - enlever les caractères dangereux
-    const sanitizedMessage = message
-      .trim()
-      .replace(/[<>]/g, '') // Enlever < et > pour éviter le HTML
-      .substring(0, 500); // Limiter à 500 caractères
+    // Sanitiser le message de manière robuste
+    let sanitizedMessage = message.trim();
+
+    // Échapper tous les caractères HTML dangereux
+    sanitizedMessage = validator.escape(sanitizedMessage);
+
+    // Limiter à 500 caractères
+    sanitizedMessage = sanitizedMessage.substring(0, 500);
 
     if (sanitizedMessage.length === 0) {
       return NextResponse.json({ error: 'Message invalide' }, { status: 400 });

@@ -69,29 +69,35 @@ export async function POST(req: NextRequest) {
     const configContent = await fs.readFile(configPath, 'utf-8');
     const configData = JSON.parse(configContent);
 
-    // Enrichir les items avec les photos de profil
-    const items = await Promise.all(configData.items.map(async (item: any) => {
-      const proposedByWithPhotos = await Promise.all(
-        item.proposedBy.map(async (personName: string) => {
-          const userResult: any = await query(
-            'SELECT name, profile_picture_url FROM users WHERE name = ?',
-            [personName]
-          );
-          if (userResult.length > 0) {
-            return {
-              name: userResult[0].name,
-              profilePictureUrl: userResult[0].profile_picture_url
-            };
-          }
-          return { name: personName, profilePictureUrl: null };
-        })
+    // Enrichir les items avec les photos de profil (optimisation: une seule requête)
+    // Collecter tous les noms uniques
+    const allPersonNames = [...new Set(
+      configData.items.flatMap((item: any) => item.proposedBy)
+    )];
+
+    // Une seule requête pour tous les utilisateurs
+    let userMap = new Map();
+    if (allPersonNames.length > 0) {
+      const placeholders = allPersonNames.map(() => '?').join(',');
+      const users: any = await query(
+        `SELECT name, profile_picture_url FROM users WHERE name IN (${placeholders})`,
+        allPersonNames
       );
+      userMap = new Map(users.map((u: any) => [u.name, u.profile_picture_url]));
+    }
+
+    // Mapper les données sans requêtes additionnelles
+    const items = configData.items.map((item: any) => {
+      const proposedByWithPhotos = item.proposedBy.map((personName: string) => ({
+        name: personName,
+        profilePictureUrl: userMap.get(personName) || null
+      }));
 
       return {
         ...item,
         proposedBy: proposedByWithPhotos
       };
-    }));
+    });
 
     // Mélanger les items pour un ordre aléatoire au départ
     for (let i = items.length - 1; i > 0; i--) {
