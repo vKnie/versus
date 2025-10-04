@@ -243,6 +243,30 @@ export default function AdminPage() {
     }
   };
 
+  const deleteProfilePicture = async (userId: number) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette photo de profil ?')) return;
+
+    try {
+      const response = await fetch('/api/users/delete-profile-picture', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (response.ok) {
+        setEditProfilePicture('');
+        fetchUsers();
+        alert('Photo de profil supprimée avec succès');
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Erreur lors de la suppression de la photo de profil');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression de la photo de profil:', error);
+      alert('Erreur lors de la suppression de la photo de profil');
+    }
+  };
+
   const deleteUser = async (userId: number, username: string) => {
     if (!confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur "${username}" ?`)) return;
 
@@ -489,6 +513,12 @@ export default function AdminPage() {
                           <div className="flex items-center gap-2">
                             <img src={user.profile_picture_url} alt="Photo actuelle" className="w-12 h-12 rounded-lg object-cover border border-zinc-700" />
                             <span className="text-xs text-zinc-500">Photo actuelle</span>
+                            <button
+                              onClick={() => deleteProfilePicture(user.id)}
+                              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                            >
+                              Supprimer
+                            </button>
                           </div>
                         )}
                       </div>

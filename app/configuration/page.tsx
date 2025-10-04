@@ -430,37 +430,37 @@ export default function ConfigurationPage() {
                         >
                           Télécharger
                         </a>
+                        {(userRoles.includes('config_creator') || userRoles.includes('admin')) && (
+                          <button
+                            onClick={() => editConfig(config.id, config.file_path)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                          >
+                            Modifier
+                          </button>
+                        )}
                         {config.created_by === session?.user?.name && (
-                          <>
-                            <button
-                              onClick={() => editConfig(config.id, config.file_path)}
-                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              onClick={async () => {
-                                if (!confirm('Êtes-vous sûr de vouloir supprimer cette configuration ?')) return;
-                                try {
-                                  const response = await fetch('/api/configurations/delete', {
-                                    method: 'DELETE',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({ configId: config.id }),
-                                  });
-                                  if (response.ok) {
-                                    fetchDbConfigs();
-                                  }
-                                } catch (error) {
-                                  console.error('Erreur lors de la suppression:', error);
+                          <button
+                            onClick={async () => {
+                              if (!confirm('Êtes-vous sûr de vouloir supprimer cette configuration ?')) return;
+                              try {
+                                const response = await fetch('/api/configurations/delete', {
+                                  method: 'DELETE',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({ configId: config.id }),
+                                });
+                                if (response.ok) {
+                                  fetchDbConfigs();
                                 }
-                              }}
-                              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
-                            >
-                              Supprimer
-                            </button>
-                          </>
+                              } catch (error) {
+                                console.error('Erreur lors de la suppression:', error);
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"
+                          >
+                            Supprimer
+                          </button>
                         )}
                       </div>
                     </div>

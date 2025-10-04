@@ -9,14 +9,22 @@ export async function GET() {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
-    // Récupérer tous les salons avec le nombre de membres
+    // Récupérer tous les salons avec le nombre de membres et le statut de partie
     const rooms = await query(`
       SELECT
         r.id,
         r.name,
         r.created_at,
         u.name as created_by_name,
-        COUNT(rm.user_id) as member_count
+        COUNT(rm.user_id) as member_count,
+        CASE
+          WHEN EXISTS (
+            SELECT 1 FROM game_sessions gs
+            WHERE JSON_EXTRACT(gs.duels_data, '$.roomId') = r.id
+            AND gs.status = 'in_progress'
+          ) THEN TRUE
+          ELSE FALSE
+        END as has_active_game
       FROM rooms r
       JOIN users u ON r.created_by = u.id
       LEFT JOIN room_members rm ON r.id = rm.room_id

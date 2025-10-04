@@ -32,6 +32,7 @@ interface Room {
   created_at: string;
   created_by_name: string;
   member_count: number;
+  has_active_game: boolean;
 }
 
 interface GameConfig {
@@ -639,14 +640,14 @@ export default function Home() {
                       {onlineUsers.count} {onlineUsers.count > 1 ? 'utilisateurs connectés' : 'utilisateur connecté'}
                     </p>
                   </div>
-                  <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                  <div className="space-y-2">
                     {onlineUsers.users.map((user, index) => (
                       <div key={index} className="flex items-center justify-between p-2 bg-zinc-800/30 rounded-lg">
                         <div className="flex items-center gap-2">
                           <Avatar src={user.profile_picture_url} name={user.name} size="xs" />
-                          <span className={`w-2 h-2 rounded-full ${user.in_game ? 'bg-orange-400' : 'bg-emerald-400'}`}></span>
+                          <span className={`w-2 h-2 rounded-full ${!!user.in_game ? 'bg-orange-400' : 'bg-emerald-400'}`}></span>
                           <span className="text-zinc-200 font-medium text-sm">{user.name}</span>
-                          {user.in_game && (
+                          {!!user.in_game && (
                             <span className="text-xs bg-orange-900/30 text-orange-400 px-2 py-0.5 rounded">En jeu</span>
                           )}
                         </div>
@@ -866,7 +867,7 @@ export default function Home() {
                                 minute: '2-digit'
                               })}
                             </span>
-                            {userRoom?.room?.isCreator && member.id !== session?.user?.id && !gameSession?.inGame && (
+                            {userRoom?.room?.isCreator && member.id !== Number(session?.user?.id) && !gameSession?.inGame && (
                               <button
                                 onClick={() => kickMember(member.id)}
                                 className="px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
@@ -936,6 +937,11 @@ export default function Home() {
                               <span className="text-xs text-zinc-500 bg-zinc-700/50 px-2 py-0.5 rounded">
                                 {room.member_count} {room.member_count > 1 ? 'membres' : 'membre'}
                               </span>
+                              {!!room.has_active_game && (
+                                <span className="text-xs text-orange-300 bg-orange-900/30 px-2 py-0.5 rounded animate-pulse">
+                                  En cours
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs text-zinc-500">
                               Créé par <span className="text-purple-400">{room.created_by_name}</span>
@@ -950,7 +956,7 @@ export default function Home() {
                               {selectedRoom === room.id ? 'Masquer' : 'Voir'}
                             </button>
 
-                            {!userRoom?.inRoom && (
+                            {!userRoom?.inRoom && !room.has_active_game && (
                               <button
                                 onClick={() => joinRoom(room.id)}
                                 className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-colors cursor-pointer"

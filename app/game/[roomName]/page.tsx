@@ -87,7 +87,14 @@ export default function GamePage() {
   const player1Ref = useRef<any>(null);
   const player2Ref = useRef<any>(null);
   const [ytReady, setYtReady] = useState(false);
-  const [globalVolume, setGlobalVolume] = useState(100);
+  const [globalVolume, setGlobalVolume] = useState(() => {
+    // Charger le volume sauvegardé depuis localStorage
+    if (typeof window !== 'undefined') {
+      const savedVolume = localStorage.getItem('gameVolume');
+      return savedVolume ? parseInt(savedVolume, 10) : 100;
+    }
+    return 100;
+  });
 
   // ✅ WebSocket - Connexion à la game room
   const { socket, isConnected } = useGameRoom(roomId, session?.user?.name || 'Anonymous');
@@ -449,6 +456,14 @@ export default function GamePage() {
           onReady: (event: any) => {
             console.log('✅ Player 1 prêt');
 
+            // Appliquer le volume sauvegardé
+            if (globalVolume > 0) {
+              event.target.setVolume(globalVolume);
+              event.target.unMute();
+            } else {
+              event.target.setVolume(0);
+            }
+
             // Configurer les écouteurs de synchronisation
             setupSyncListeners(event.target, 1);
 
@@ -482,6 +497,14 @@ export default function GamePage() {
         events: {
           onReady: (event: any) => {
             console.log('✅ Player 2 prêt');
+
+            // Appliquer le volume sauvegardé
+            if (globalVolume > 0) {
+              event.target.setVolume(globalVolume);
+              event.target.unMute();
+            } else {
+              event.target.setVolume(0);
+            }
 
             // Configurer les écouteurs de synchronisation
             setupSyncListeners(event.target, 2);
@@ -641,6 +664,11 @@ export default function GamePage() {
   // 🔊 Contrôle du volume global (pour tout le monde)
   const handleGlobalVolumeChange = (volume: number) => {
     setGlobalVolume(volume);
+
+    // Sauvegarder le volume dans localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gameVolume', volume.toString());
+    }
 
     // Appliquer le volume aux deux players et unmute si volume > 0
     if (player1Ref.current && typeof player1Ref.current.setVolume === 'function') {
