@@ -20,9 +20,10 @@ export async function saveGameHistory(
       duel_index: number;
       item_voted: string;
       voter_name: string;
+      profile_picture_url: string | null;
       created_at: string;
     }>(
-      `SELECT v.duel_index, v.item_voted, u.name as voter_name, v.created_at
+      `SELECT v.duel_index, v.item_voted, u.name as voter_name, u.profile_picture_url, v.created_at
        FROM votes v
        JOIN users u ON v.user_id = u.id
        WHERE v.game_session_id = ?
@@ -53,8 +54,8 @@ export async function saveGameHistory(
         round: duel.round,
         item1: duel.item1,
         item2: duel.item2,
-        item1Votes: item1Votes.map((v) => ({ voter: v.voter_name, votedAt: v.created_at })),
-        item2Votes: item2Votes.map((v) => ({ voter: v.voter_name, votedAt: v.created_at })),
+        item1Votes: item1Votes.map((v) => ({ voter: v.voter_name, votedAt: v.created_at, profilePictureUrl: v.profile_picture_url })),
+        item2Votes: item2Votes.map((v) => ({ voter: v.voter_name, votedAt: v.created_at, profilePictureUrl: v.profile_picture_url })),
         item1Count: item1Votes.length,
         item2Count: item2Votes.length,
         winner

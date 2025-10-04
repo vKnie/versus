@@ -349,6 +349,20 @@ app.prepare().then(() => {
       console.log(`🏁 Game finished: ${data.gameSessionId}`);
     });
 
+    // Partie annulée par le créateur
+    socket.on('game_cancelled', (data) => {
+      const { roomId } = data;
+      const roomSocketName = `game_room_${roomId}`;
+
+      // Notifier tous les membres du salon
+      io.to(roomSocketName).emit('game_cancelled', { roomId });
+
+      // Notifier globalement pour mettre à jour la page d'accueil
+      io.emit('game_cancelled', { roomId });
+
+      console.log(`🚫 Partie annulée pour le salon ${roomId}`);
+    });
+
     // ✅ Partie démarrée - Rediriger tous les membres du salon
     socket.on('game_started', (data) => {
       const { roomId, roomName, gameSessionId } = data;

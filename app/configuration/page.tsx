@@ -324,53 +324,71 @@ export default function ConfigurationPage() {
                   + Ajouter un item
                 </button>
 
-                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {items.map((item, index) => (
-                    <div
-                      key={index}
-                      className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <h4 className="text-zinc-200 font-medium text-sm mb-1">{item.name}</h4>
-                          {item.youtubeLink && (
-                            <a
-                              href={item.youtubeLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-purple-400 hover:text-purple-300 text-xs break-all"
-                            >
-                              {item.youtubeLink}
-                            </a>
+                <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+                  {items.map((item, index) => {
+                    const videoId = item.youtubeLink ? item.youtubeLink.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1] : null;
+
+                    return (
+                      <div
+                        key={index}
+                        className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          {/* Miniature vidéo */}
+                          {videoId && (
+                            <div className="flex-shrink-0">
+                              <img
+                                src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                                alt={item.name}
+                                className="w-32 h-20 object-cover rounded border border-zinc-700"
+                              />
+                            </div>
                           )}
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {item.proposedBy.map((person, i) => (
-                              <span
-                                key={i}
-                                className="text-xs bg-zinc-700/50 text-zinc-300 px-2 py-0.5 rounded"
+
+                          {/* Contenu */}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-zinc-200 font-medium text-sm mb-1">{item.name}</h4>
+                            {item.youtubeLink && (
+                              <a
+                                href={item.youtubeLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-purple-400 hover:text-purple-300 text-xs break-all block mb-2"
                               >
-                                {person}
-                              </span>
-                            ))}
+                                {item.youtubeLink}
+                              </a>
+                            )}
+                            <div className="flex flex-wrap gap-1">
+                              {item.proposedBy.map((person, i) => (
+                                <span
+                                  key={i}
+                                  className="text-xs bg-zinc-700/50 text-zinc-300 px-2 py-0.5 rounded"
+                                >
+                                  {person}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Boutons d'action */}
+                          <div className="flex flex-col gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => editItem(index)}
+                              className="text-blue-400 hover:text-blue-300 text-sm font-medium cursor-pointer whitespace-nowrap"
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              onClick={() => removeItem(index)}
+                              className="text-red-400 hover:text-red-300 text-sm font-medium cursor-pointer whitespace-nowrap"
+                            >
+                              Supprimer
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 ml-3">
-                          <button
-                            onClick={() => editItem(index)}
-                            className="text-blue-400 hover:text-blue-300 text-sm font-medium cursor-pointer"
-                          >
-                            Modifier
-                          </button>
-                          <button
-                            onClick={() => removeItem(index)}
-                            className="text-red-400 hover:text-red-300 text-sm font-medium cursor-pointer"
-                          >
-                            Supprimer
-                          </button>
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

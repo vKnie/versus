@@ -444,6 +444,14 @@ export default function Home() {
       }
     });
 
+    // Écouter l'annulation de partie
+    socket.on('game_cancelled', (data: { roomId: number }) => {
+      console.log('🚫 Partie annulée reçue:', data);
+      // Rafraîchir l'état pour tous les utilisateurs
+      checkUserRoom();
+      checkGameSession();
+    });
+
     // Écouter les updates d'utilisateurs en ligne
     socket.on('online_users_update', (data: { count: number; users: OnlineUser[] }) => {
       setOnlineUsers({
@@ -458,6 +466,7 @@ export default function Home() {
       socket.off('rooms_update');
       socket.off('room_members_update');
       socket.off('game_started');
+      socket.off('game_cancelled');
       socket.off('online_users_update');
     };
   }, [socket, session, selectedRoom, userRoom?.room?.id, router]);
@@ -706,15 +715,54 @@ export default function Home() {
                     </div>
                     <div className="flex items-center gap-2">
                       {gameSession?.inGame && gameSession?.roomName === userRoom.room.name && (
-                        <button
-                          onClick={() => {
-                            const gameUrl = `/game/${encodeURIComponent(gameSession.roomName!)}`;
-                            window.location.href = gameUrl; // Force un reload complet de la page
-                          }}
-                          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap animate-pulse"
-                        >
-                          Rejoindre
-                        </button>
+                        <>
+                          <button
+                            onClick={() => {
+                              const gameUrl = `/game/${encodeURIComponent(gameSession.roomName!)}`;
+                              window.location.href = gameUrl; // Force un reload complet de la page
+                            }}
+                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap animate-pulse"
+                          >
+                            Rejoindre
+                          </button>
+                          {userRoom?.room?.isCreator && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm('Êtes-vous sûr de vouloir annuler la partie en cours ? Tous les votes seront perdus.')) {
+                                  return;
+                                }
+
+                                try {
+                                  const response = await fetch('/api/game/cancel', {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({ roomId: userRoom.room.id }),
+                                  });
+
+                                  if (response.ok) {
+                                    // Notifier via WebSocket que la partie est annulée
+                                    socket?.emit('game_cancelled', { roomId: userRoom.room.id });
+
+                                    alert('Partie annulée avec succès !');
+
+                                    // Recharger la page pour rafraîchir complètement l'état
+                                    window.location.reload();
+                                  } else {
+                                    const error = await response.json();
+                                    alert(error.error || 'Erreur lors de l\'annulation de la partie');
+                                  }
+                                } catch (error) {
+                                  console.error('Erreur lors de l\'annulation de la partie:', error);
+                                }
+                              }}
+                              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                            >
+                              Annuler la partie
+                            </button>
+                          )}
+                        </>
                       )}
                       {!gameSession?.inGame && !userRoom?.room?.isCreator && (
                         <button

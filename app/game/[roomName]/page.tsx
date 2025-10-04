@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Avatar from '@/components/Avatar';
 import { useGameRoom } from '@/lib/useSocket';
+import { Volume2, Check, SkipBack, Pause, Play, SkipForward, AlertTriangle, Trophy } from 'lucide-react';
 
 interface VoteDetail {
   userId: number;
@@ -224,6 +225,13 @@ export default function GamePage() {
       router.push(`/results/${data.gameSessionId}`);
     });
 
+    // Partie annulée
+    socket.on('game_cancelled', (data: { roomId: number }) => {
+      console.log('🚫 Partie annulée:', data.roomId);
+      alert('La partie a été annulée par le créateur du salon.');
+      window.location.href = '/'; // Force un reload complet
+    });
+
     // Un joueur a rejoint
     socket.on('player_joined', (data: { username: string }) => {
       console.log('👤 Joueur rejoint:', data.username);
@@ -286,6 +294,7 @@ export default function GamePage() {
       socket.off('tiebreaker_continue_update');
       socket.off('normal_continue_update');
       socket.off('game_ended');
+      socket.off('game_cancelled');
       socket.off('player_joined');
       socket.off('video_play');
       socket.off('video_pause');
@@ -740,37 +749,53 @@ export default function GamePage() {
       `}</style>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-zinc-200 break-words">{decodeURIComponent(roomName)}</h1>
-            <p className="text-sm text-zinc-500">
-              Duel {gameState.currentDuelIndex + 1} / {gameState.totalDuels}
-            </p>
-          </div>
-          <div className="flex flex-col sm:items-end gap-2">
-            <div className="sm:text-right">
-              <p className="text-sm text-zinc-400">
-                Votes: {gameState.votes} / {gameState.totalPlayers}
-              </p>
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-200 mb-4">{decodeURIComponent(roomName)}</h1>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Badge Duel */}
+            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2">
+              <span className="text-sm text-zinc-400">Duel</span>
+              <span className="ml-2 text-sm font-semibold text-zinc-200">
+                {gameState.currentDuelIndex + 1} / {gameState.totalDuels}
+              </span>
+            </div>
+
+            {/* Badge Maître du jeu */}
+            {gameState.gameMaster && (
+              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-2">
+                <span className="text-sm text-zinc-400">Maître :</span>
+                <div className="flex items-center gap-1.5">
+                  <Avatar src={gameState.gameMaster.profilePictureUrl} name={gameState.gameMaster.name} size="xs" />
+                  <span className="text-sm font-medium text-zinc-200">{gameState.gameMaster.name}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Badge Votes */}
+            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2">
+              <span className="text-sm text-zinc-400">Votes :</span>
+              <span className="ml-2 text-sm font-semibold text-zinc-200">
+                {gameState.votes} / {gameState.totalPlayers}
+              </span>
               {gameState.allVoted && (
-                <p className="text-sm text-emerald-400">En attente du prochain duel...</p>
+                <Check className="ml-2 w-3.5 h-3.5 text-emerald-400" />
               )}
             </div>
-            {/* Contrôle de volume global */}
-            <div className="bg-zinc-800/50 px-4 py-2 rounded-lg border border-zinc-700/50">
-              <div className="flex items-center gap-3 min-w-[200px]">
-                <span className="text-zinc-400 text-sm">🔊</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={globalVolume}
-                  onChange={(e) => handleGlobalVolumeChange(parseInt(e.target.value))}
-                  className="flex-1 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                  title="Volume global"
-                />
-                <span className="text-zinc-400 text-xs w-8 text-right">{globalVolume}%</span>
-              </div>
+
+            {/* Badge Volume */}
+            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-3 min-w-[220px]">
+              <Volume2 className="w-4 h-4 text-zinc-400" />
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={globalVolume}
+                onChange={(e) => handleGlobalVolumeChange(parseInt(e.target.value))}
+                className="flex-1 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                title="Volume global"
+              />
+              <span className="text-xs text-zinc-400 w-9 text-right">{globalVolume}%</span>
             </div>
           </div>
         </div>
@@ -783,11 +808,6 @@ export default function GamePage() {
               <div id="player1" className="w-full h-full"></div>
               {/* Couche transparente pour bloquer les clics sur la vidéo */}
               <div className="absolute inset-0 pointer-events-auto bg-transparent"></div>
-              {gameState.isGameMaster && (
-                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10 pointer-events-none">
-                  <span>👑</span> Maître du Jeu
-                </div>
-              )}
             </div>
 
             {/* Contrôles vidéo pour le maître du jeu */}
@@ -804,10 +824,11 @@ export default function GamePage() {
                         socket?.emit('video_seek', { roomId, videoIndex: 1, timestamp: newTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Reculer de 10s"
                   >
-                    ⏪ -10s
+                    <SkipBack className="w-3.5 h-3.5" />
+                    <span>-10s</span>
                   </button>
                   <button
                     onClick={() => {
@@ -818,10 +839,11 @@ export default function GamePage() {
                         socket?.emit('video_pause', { roomId, videoIndex: 1, timestamp: currentTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Pause"
                   >
-                    ⏸️ Pause
+                    <Pause className="w-3.5 h-3.5" />
+                    <span>Pause</span>
                   </button>
                   <button
                     onClick={() => {
@@ -832,10 +854,11 @@ export default function GamePage() {
                         socket?.emit('video_play', { roomId, videoIndex: 1, timestamp: currentTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Lecture"
                   >
-                    ▶️ Play
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Play</span>
                   </button>
                   <button
                     onClick={() => {
@@ -847,10 +870,11 @@ export default function GamePage() {
                         socket?.emit('video_seek', { roomId, videoIndex: 1, timestamp: newTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Avancer de 10s"
                   >
-                    ⏩ +10s
+                    <SkipForward className="w-3.5 h-3.5" />
+                    <span>+10s</span>
                   </button>
                   <select
                     onChange={(e) => {
@@ -881,12 +905,16 @@ export default function GamePage() {
               <div className="mb-4">
                 <p className="text-xs text-zinc-400 mb-2">Proposé par :</p>
                 <div className="flex flex-wrap gap-2">
-                  {gameState.currentDuel.item1.proposedBy.map((person, i) => (
-                    <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
-                      <Avatar src={person.profilePictureUrl} name={person.name} size="xs" />
-                      <span className="text-xs text-zinc-300">{person.name}</span>
-                    </div>
-                  ))}
+                  {gameState.currentDuel.item1.proposedBy.map((person, i) => {
+                    const personName = typeof person === 'string' ? person : person.name;
+                    const personPic = typeof person === 'string' ? null : person.profilePictureUrl;
+                    return (
+                      <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
+                        <Avatar src={personPic} name={personName} size="xs" />
+                        <span className="text-xs text-zinc-300">{personName}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -902,7 +930,7 @@ export default function GamePage() {
                 }`}
               >
                 {gameState.userVote === gameState.currentDuel.item1.name
-                  ? 'Voté ✓'
+                  ? (<span className="flex items-center gap-1"><Check className="w-3 h-3" /> Voté</span>)
                   : gameState.hasVoted
                   ? 'Déjà voté'
                   : 'Voter pour cet item'}
@@ -916,11 +944,6 @@ export default function GamePage() {
               <div id="player2" className="w-full h-full"></div>
               {/* Couche transparente pour bloquer les clics sur la vidéo */}
               <div className="absolute inset-0 pointer-events-auto bg-transparent"></div>
-              {gameState.isGameMaster && (
-                <div className="absolute top-2 left-2 bg-amber-600 text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 z-10 pointer-events-none">
-                  <span>👑</span> Maître du Jeu
-                </div>
-              )}
             </div>
 
             {/* Contrôles vidéo pour le maître du jeu */}
@@ -937,10 +960,11 @@ export default function GamePage() {
                         socket?.emit('video_seek', { roomId, videoIndex: 2, timestamp: newTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Reculer de 10s"
                   >
-                    ⏪ -10s
+                    <SkipBack className="w-3.5 h-3.5" />
+                    <span>-10s</span>
                   </button>
                   <button
                     onClick={() => {
@@ -951,10 +975,11 @@ export default function GamePage() {
                         socket?.emit('video_pause', { roomId, videoIndex: 2, timestamp: currentTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Pause"
                   >
-                    ⏸️ Pause
+                    <Pause className="w-3.5 h-3.5" />
+                    <span>Pause</span>
                   </button>
                   <button
                     onClick={() => {
@@ -965,10 +990,11 @@ export default function GamePage() {
                         socket?.emit('video_play', { roomId, videoIndex: 2, timestamp: currentTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Lecture"
                   >
-                    ▶️ Play
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Play</span>
                   </button>
                   <button
                     onClick={() => {
@@ -980,10 +1006,11 @@ export default function GamePage() {
                         socket?.emit('video_seek', { roomId, videoIndex: 2, timestamp: newTime });
                       }
                     }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Avancer de 10s"
                   >
-                    ⏩ +10s
+                    <SkipForward className="w-3.5 h-3.5" />
+                    <span>+10s</span>
                   </button>
                   <select
                     onChange={(e) => {
@@ -1014,12 +1041,16 @@ export default function GamePage() {
               <div className="mb-4">
                 <p className="text-xs text-zinc-400 mb-2">Proposé par :</p>
                 <div className="flex flex-wrap gap-2">
-                  {gameState.currentDuel.item2.proposedBy.map((person, i) => (
-                    <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
-                      <Avatar src={person.profilePictureUrl} name={person.name} size="xs" />
-                      <span className="text-xs text-zinc-300">{person.name}</span>
-                    </div>
-                  ))}
+                  {gameState.currentDuel.item2.proposedBy.map((person, i) => {
+                    const personName = typeof person === 'string' ? person : person.name;
+                    const personPic = typeof person === 'string' ? null : person.profilePictureUrl;
+                    return (
+                      <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
+                        <Avatar src={personPic} name={personName} size="xs" />
+                        <span className="text-xs text-zinc-300">{personName}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1035,7 +1066,7 @@ export default function GamePage() {
                 }`}
               >
                 {gameState.userVote === gameState.currentDuel.item2.name
-                  ? 'Voté ✓'
+                  ? (<span className="flex items-center gap-1"><Check className="w-3 h-3" /> Voté</span>)
                   : gameState.hasVoted
                   ? 'Déjà voté'
                   : 'Voter pour cet item'}
@@ -1054,7 +1085,7 @@ export default function GamePage() {
                 <span className="text-purple-400 font-semibold text-lg">{pendingVote}</span> ?
               </p>
               <p className="text-xs text-zinc-500 mb-6">
-                ⚠️ Vous ne pourrez pas changer votre vote une fois confirmé.
+                <span className="flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Vous ne pourrez pas changer votre vote une fois confirmé.</span>
               </p>
               <div className="flex gap-3">
                 <button
@@ -1081,7 +1112,7 @@ export default function GamePage() {
             <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-4 sm:p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
               <div className="mb-4 sm:mb-6">
                 <h3 className="text-xl sm:text-2xl font-bold text-zinc-200 mb-1">
-                  Tie Breaker
+                  Égalité
                 </h3>
                 <p className="text-zinc-400 text-xs sm:text-sm">
                   Duel {gameState.currentDuelIndex + 1} - Égalité {gameState.tieBreaker.votes}-{gameState.tieBreaker.votes}
@@ -1115,7 +1146,7 @@ export default function GamePage() {
                   </div>
                   {!coinFlipping && gameState.tieBreaker.winner === gameState.tieBreaker.item1 && (
                     <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400">✓ Gagnant</span>
+                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
                     </div>
                   )}
                 </div>
@@ -1144,14 +1175,14 @@ export default function GamePage() {
                   </div>
                   {!coinFlipping && gameState.tieBreaker.winner === gameState.tieBreaker.item2 && (
                     <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400">✓ Gagnant</span>
+                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Animation de la pièce */}
-              <div className="mb-4 sm:mb-6 flex justify-center">
+              <div className="mb-4 sm:mb-6 flex justify-center items-center gap-4">
                 <div
                   className={`text-6xl sm:text-8xl ${coinFlipping ? 'animate-spin' : ''}`}
                   style={{
@@ -1160,24 +1191,17 @@ export default function GamePage() {
                 >
                   🪙
                 </div>
+                {!coinFlipping && (
+                  <div className="text-center">
+                    <p className="text-2xl sm:text-4xl font-bold text-zinc-200">
+                      {gameState.tieBreaker.coinFlip === 'heads' ? 'Pile' : 'Face'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {!coinFlipping && (
                 <div className="space-y-3 sm:space-y-4">
-                  <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3 sm:p-4">
-                    <p className="text-xs text-zinc-400 mb-1">Résultat du lancer</p>
-                    <p className="text-lg sm:text-xl font-semibold text-zinc-200">
-                      {gameState.tieBreaker.coinFlip === 'heads' ? 'Pile' : 'Face'}
-                    </p>
-                  </div>
-
-                  <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3 sm:p-4">
-                    <p className="text-xs text-zinc-400 mb-1">Gagnant</p>
-                    <p className="text-lg sm:text-xl font-semibold text-zinc-200 break-words">
-                      {gameState.tieBreaker.winner}
-                    </p>
-                  </div>
-
                   {showContinueButton && (
                     <div className="mt-4 sm:mt-6">
                       <button
@@ -1265,7 +1289,7 @@ export default function GamePage() {
                   {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length >
                    gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length && (
                     <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400">✓ Gagnant</span>
+                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
                     </div>
                   )}
                 </div>
@@ -1302,7 +1326,7 @@ export default function GamePage() {
                   {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length >
                    gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length && (
                     <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400">✓ Gagnant</span>
+                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
                     </div>
                   )}
                 </div>

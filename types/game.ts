@@ -3,7 +3,7 @@
 export interface GameItem {
   name: string;
   youtubeLink: string;
-  proposedBy: string[];
+  proposedBy: (string | { name: string; profilePictureUrl?: string | null })[];
 }
 
 export interface Duel {
@@ -80,4 +80,9 @@ export interface GameStateResponse {
   tieBreaker: TieBreaker | null;
   continueClicks?: number;
   userHasContinued?: boolean;
+  isGameMaster: boolean;
+  gameMaster: {
+    name: string;
+    profilePictureUrl: string | null;
+  } | null;
 }

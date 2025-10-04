@@ -69,8 +69,29 @@ export async function POST(req: NextRequest) {
     const configContent = await fs.readFile(configPath, 'utf-8');
     const configData = JSON.parse(configContent);
 
-    // Générer les duels en mode tournoi à élimination directe
-    const items = [...configData.items];
+    // Enrichir les items avec les photos de profil
+    const items = await Promise.all(configData.items.map(async (item: any) => {
+      const proposedByWithPhotos = await Promise.all(
+        item.proposedBy.map(async (personName: string) => {
+          const userResult: any = await query(
+            'SELECT name, profile_picture_url FROM users WHERE name = ?',
+            [personName]
+          );
+          if (userResult.length > 0) {
+            return {
+              name: userResult[0].name,
+              profilePictureUrl: userResult[0].profile_picture_url
+            };
+          }
+          return { name: personName, profilePictureUrl: null };
+        })
+      );
+
+      return {
+        ...item,
+        proposedBy: proposedByWithPhotos
+      };
+    }));
 
     // Mélanger les items pour un ordre aléatoire au départ
     for (let i = items.length - 1; i > 0; i--) {

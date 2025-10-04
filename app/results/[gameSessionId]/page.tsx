@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import Avatar from '@/components/Avatar';
 
 interface DuelResult {
   duelIndex: number;
@@ -10,15 +11,15 @@ interface DuelResult {
   item1: {
     name: string;
     youtubeLink: string;
-    proposedBy: string[];
+    proposedBy: (string | { name: string; profilePictureUrl?: string | null })[];
   };
   item2: {
     name: string;
     youtubeLink: string;
-    proposedBy: string[];
+    proposedBy: (string | { name: string; profilePictureUrl?: string | null })[];
   };
-  item1Votes: { voter: string; votedAt: string }[];
-  item2Votes: { voter: string; votedAt: string }[];
+  item1Votes: { voter: string; votedAt: string; profilePictureUrl?: string | null }[];
+  item2Votes: { voter: string; votedAt: string; profilePictureUrl?: string | null }[];
   item1Count: number;
   item2Count: number;
   winner: string;
@@ -113,6 +114,11 @@ export default function ResultsPage() {
     return `Round ${round}`;
   };
 
+  const extractYouTubeId = (url: string) => {
+    const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+    return match ? match[1] : null;
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 p-4">
       <div className="max-w-7xl mx-auto">
@@ -164,58 +170,72 @@ export default function ResultsPage() {
                             : 'border-zinc-800'
                         }`}
                       >
-                        <div className="flex items-start justify-between mb-2">
-                          <h4 className={`text-base font-medium ${
-                            duel.winner === duel.item1.name ? 'text-emerald-400' : 'text-zinc-200'
-                          }`}>
-                            {duel.item1.name}
-                          </h4>
-                          {duel.winner === duel.item1.name && (
-                            <span className="text-emerald-400 text-sm">✓</span>
+                        <div className="flex gap-3">
+                          {/* Contenu principal */}
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between mb-2">
+                              <h4 className={`text-base font-medium ${
+                                duel.winner === duel.item1.name ? 'text-emerald-400' : 'text-zinc-200'
+                              }`}>
+                                {duel.item1.name}
+                              </h4>
+                              {duel.winner === duel.item1.name && (
+                                <span className="text-emerald-400 text-sm">✓</span>
+                              )}
+                            </div>
+
+                            <div className="mb-2">
+                              <p className="text-xs text-zinc-500 mb-1">
+                                Proposé par
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {duel.item1.proposedBy.map((person, i) => {
+                                  // Support pour l'ancien format (string) et le nouveau (objet)
+                                  const personName = typeof person === 'string' ? person : person.name;
+                                  const personPic = typeof person === 'string' ? null : person.profilePictureUrl;
+                                  return (
+                                    <div key={i} className="flex items-center gap-1 bg-zinc-800/60 rounded-full pr-2 py-0.5">
+                                      <Avatar src={personPic} name={personName} size="xs" />
+                                      <span className="text-xs text-zinc-400">{personName}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="border-t border-zinc-800 pt-2">
+                              <p className="text-xs text-zinc-500 mb-1">
+                                {duel.item1Count} vote{duel.item1Count > 1 ? 's' : ''}
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {duel.item1Votes.map((vote, i) => (
+                                  <div key={i} className="flex items-center gap-1 bg-zinc-800/60 rounded-full pr-2 py-0.5">
+                                    <Avatar src={vote.profilePictureUrl} name={vote.voter} size="xs" />
+                                    <span className="text-xs text-zinc-400">{vote.voter}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Miniature YouTube à droite */}
+                          {duel.item1.youtubeLink && extractYouTubeId(duel.item1.youtubeLink) && (
+                            <div className="flex flex-col gap-1">
+                              <img
+                                src={`https://img.youtube.com/vi/${extractYouTubeId(duel.item1.youtubeLink)}/mqdefault.jpg`}
+                                alt={duel.item1.name}
+                                className="w-32 h-20 object-cover rounded border border-zinc-700"
+                              />
+                              <a
+                                href={duel.item1.youtubeLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-center transition-colors cursor-pointer"
+                              >
+                                Voir la vidéo
+                              </a>
+                            </div>
                           )}
-                        </div>
-
-                        <div className="mb-2">
-                          <a
-                            href={duel.item1.youtubeLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded mb-2 transition-colors cursor-pointer"
-                          >
-                            Voir la vidéo
-                          </a>
-                        </div>
-
-                        <div className="mb-2">
-                          <p className="text-xs text-zinc-500 mb-1">
-                            Proposé par
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {duel.item1.proposedBy.map((person, i) => (
-                              <span
-                                key={i}
-                                className="text-xs bg-zinc-800/60 text-zinc-400 px-2 py-0.5 rounded"
-                              >
-                                {person}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="border-t border-zinc-800 pt-2">
-                          <p className="text-xs text-zinc-500 mb-1">
-                            {duel.item1Count} vote{duel.item1Count > 1 ? 's' : ''}
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {duel.item1Votes.map((vote, i) => (
-                              <span
-                                key={i}
-                                className="text-xs bg-zinc-800/60 text-zinc-400 px-2 py-0.5 rounded"
-                              >
-                                {vote.voter}
-                              </span>
-                            ))}
-                          </div>
                         </div>
                       </div>
 
@@ -227,58 +247,72 @@ export default function ResultsPage() {
                             : 'border-zinc-800'
                         }`}
                       >
-                        <div className="flex items-start justify-between mb-2">
-                          <h4 className={`text-base font-medium ${
-                            duel.winner === duel.item2.name ? 'text-emerald-400' : 'text-zinc-200'
-                          }`}>
-                            {duel.item2.name}
-                          </h4>
-                          {duel.winner === duel.item2.name && (
-                            <span className="text-emerald-400 text-sm">✓</span>
+                        <div className="flex gap-3">
+                          {/* Contenu principal */}
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between mb-2">
+                              <h4 className={`text-base font-medium ${
+                                duel.winner === duel.item2.name ? 'text-emerald-400' : 'text-zinc-200'
+                              }`}>
+                                {duel.item2.name}
+                              </h4>
+                              {duel.winner === duel.item2.name && (
+                                <span className="text-emerald-400 text-sm">✓</span>
+                              )}
+                            </div>
+
+                            <div className="mb-2">
+                              <p className="text-xs text-zinc-500 mb-1">
+                                Proposé par
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {duel.item2.proposedBy.map((person, i) => {
+                                  // Support pour l'ancien format (string) et le nouveau (objet)
+                                  const personName = typeof person === 'string' ? person : person.name;
+                                  const personPic = typeof person === 'string' ? null : person.profilePictureUrl;
+                                  return (
+                                    <div key={i} className="flex items-center gap-1 bg-zinc-800/60 rounded-full pr-2 py-0.5">
+                                      <Avatar src={personPic} name={personName} size="xs" />
+                                      <span className="text-xs text-zinc-400">{personName}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="border-t border-zinc-800 pt-2">
+                              <p className="text-xs text-zinc-500 mb-1">
+                                {duel.item2Count} vote{duel.item2Count > 1 ? 's' : ''}
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {duel.item2Votes.map((vote, i) => (
+                                  <div key={i} className="flex items-center gap-1 bg-zinc-800/60 rounded-full pr-2 py-0.5">
+                                    <Avatar src={vote.profilePictureUrl} name={vote.voter} size="xs" />
+                                    <span className="text-xs text-zinc-400">{vote.voter}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Miniature YouTube à droite */}
+                          {duel.item2.youtubeLink && extractYouTubeId(duel.item2.youtubeLink) && (
+                            <div className="flex flex-col gap-1">
+                              <img
+                                src={`https://img.youtube.com/vi/${extractYouTubeId(duel.item2.youtubeLink)}/mqdefault.jpg`}
+                                alt={duel.item2.name}
+                                className="w-32 h-20 object-cover rounded border border-zinc-700"
+                              />
+                              <a
+                                href={duel.item2.youtubeLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-center transition-colors cursor-pointer"
+                              >
+                                Voir la vidéo
+                              </a>
+                            </div>
                           )}
-                        </div>
-
-                        <div className="mb-2">
-                          <a
-                            href={duel.item2.youtubeLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded mb-2 transition-colors cursor-pointer"
-                          >
-                            Voir la vidéo
-                          </a>
-                        </div>
-
-                        <div className="mb-2">
-                          <p className="text-xs text-zinc-500 mb-1">
-                            Proposé par
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {duel.item2.proposedBy.map((person, i) => (
-                              <span
-                                key={i}
-                                className="text-xs bg-zinc-800/60 text-zinc-400 px-2 py-0.5 rounded"
-                              >
-                                {person}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="border-t border-zinc-800 pt-2">
-                          <p className="text-xs text-zinc-500 mb-1">
-                            {duel.item2Count} vote{duel.item2Count > 1 ? 's' : ''}
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {duel.item2Votes.map((vote, i) => (
-                              <span
-                                key={i}
-                                className="text-xs bg-zinc-800/60 text-zinc-400 px-2 py-0.5 rounded"
-                              >
-                                {vote.voter}
-                              </span>
-                            ))}
-                          </div>
                         </div>
                       </div>
                     </div>

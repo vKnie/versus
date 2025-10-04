@@ -75,13 +75,20 @@ export async function GET(req: NextRequest) {
     const enrichDuelWithProfiles = async (duel: any) => {
       const enrichItem = async (item: any) => {
         const proposedByWithProfiles = await Promise.all(
-          item.proposedBy.map(async (name: string) => {
+          item.proposedBy.map(async (person: string | { name: string; profilePictureUrl?: string | null }) => {
+            // Si c'est déjà un objet avec profilePictureUrl, le retourner tel quel
+            if (typeof person === 'object' && person !== null) {
+              return person;
+            }
+
+            // Sinon, c'est une string, récupérer la photo de profil
+            const personName = person as string;
             const userProfile: any = await query(
               'SELECT name, profile_picture_url FROM users WHERE name = ?',
-              [name]
+              [personName]
             );
             return {
-              name,
+              name: personName,
               profilePictureUrl: userProfile.length > 0 ? userProfile[0].profile_picture_url : null
             };
           })
@@ -103,12 +110,19 @@ export async function GET(req: NextRequest) {
       [roomId]
     );
 
-    // Récupérer le créateur du salon
+    // Récupérer le créateur du salon avec ses informations
     const roomInfo: any = await query(
-      'SELECT created_by FROM rooms WHERE id = ?',
+      `SELECT r.created_by, u.name, u.profile_picture_url
+       FROM rooms r
+       JOIN users u ON r.created_by = u.id
+       WHERE r.id = ?`,
       [roomId]
     );
     const isGameMaster = roomInfo.length > 0 && roomInfo[0].created_by === userId;
+    const gameMaster = roomInfo.length > 0 ? {
+      name: roomInfo[0].name,
+      profilePictureUrl: roomInfo[0].profile_picture_url
+    } : null;
 
     // Récupérer les votes pour le duel actuel avec photos de profil
     const votes: any = await query(
@@ -161,7 +175,8 @@ export async function GET(req: NextRequest) {
       tieBreaker: currentTieBreaker || null,
       continueClicks,
       userHasContinued,
-      isGameMaster
+      isGameMaster,
+      gameMaster
     });
   } catch (error) {
     console.error('Erreur lors de la récupération de l\'état du jeu:', error);
