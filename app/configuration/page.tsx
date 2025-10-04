@@ -96,8 +96,9 @@ export default function ConfigurationPage() {
     // Vérifier que le nombre d'items est une puissance de 2
     const isPowerOfTwo = (n: number) => n > 0 && (n & (n - 1)) === 0;
     if (!isPowerOfTwo(items.length)) {
-      alert(`Le nombre d'items doit être une puissance de 2 (2, 4, 8, 16, 32, 64, 128, 256...). Vous avez actuellement ${items.length} items.`);
-      return;
+      const nextPowerOfTwo = Math.pow(2, Math.ceil(Math.log2(items.length)));
+      const itemsToHide = items.length - Math.pow(2, Math.floor(Math.log2(items.length)));
+      alert(`⚠️ Attention : Vous avez ${items.length} items. Pour que le tournoi fonctionne correctement, certains items ne seront pas affichés.\n\nNombre d'items recommandé : ${Math.pow(2, Math.floor(Math.log2(items.length)))} ou ${nextPowerOfTwo}\n\nLa configuration sera quand même enregistrée.`);
     }
 
     const newConfig: GameConfig = {
