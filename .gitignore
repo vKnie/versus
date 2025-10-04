@@ -42,4 +42,5 @@ next-env.d.ts
 
 # uploads
 /public/uploads/
+/public/configs/
 /public/game_history/
