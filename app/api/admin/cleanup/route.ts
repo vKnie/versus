@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { getUserIdByName, userHasRole } from '@/lib/db';
 import { cleanupOldData } from '@/lib/cleanup';
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   try {
     const session = await getServerSession();
     if (!session || !session.user?.name) {

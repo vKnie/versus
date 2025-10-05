@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { query, getUserIdByName, getPool } from '@/lib/db';
-import { withRateLimit } from '@/lib/rate-limit';
-import { saveGameHistory } from '@/lib/game-utils';
+import { getUserIdByName, getPool } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 async function handleVote(req: NextRequest) {
   const connection = await getPool().getConnection();
+  const startTime = Date.now();
+  let username: string | undefined;
 
   try {
     const session = await getServerSession();
+    username = session?.user?.name;
     if (!session || !session.user?.name) {
+      logger.api.error('POST', '/api/game/vote', new Error('Unauthorized'));
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
@@ -113,8 +116,7 @@ async function handleVote(req: NextRequest) {
           votes: voteResults[0].votes
         });
 
-        console.log(`🎲 TIE BREAKER - Duel ${duelIndex}: ${item1} vs ${item2} (${voteResults[0].votes}-${voteResults[0].votes})`);
-        console.log(`🪙 Coin flip: ${coinFlip} → Winner: ${winner}`);
+        logger.game.tieBreaker(gameSessionId, duelIndex, item1, item2, winner);
       } else {
         // Pas d'égalité, le plus de votes gagne
         winner = voteResults[0].item_voted;
@@ -156,19 +158,23 @@ async function handleVote(req: NextRequest) {
     // ✅ Commit de la transaction si tout s'est bien passé
     await connection.commit();
 
+    const duration = Date.now() - startTime;
+    logger.game.voted(gameSessionId, duelIndex, itemVoted, session.user.name);
+    logger.api.request('POST', '/api/game/vote', 200, duration, session.user.name);
+
     return NextResponse.json({
       success: true,
       allVoted,
       message: 'Vote enregistré avec succès'
     });
-  } catch (error) {
+  } catch (error: any) {
     await connection.rollback();
-    console.error('Erreur lors de l\'enregistrement du vote:', error);
+    logger.api.error('POST', '/api/game/vote', error, username);
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   } finally {
     connection.release();
   }
 }
 
-// Appliquer rate limiting : 20 votes max par minute
-export const POST = withRateLimit(handleVote, 20, 60000);
+// Pas de rate limiting pour les votes
+export const POST = handleVote;

@@ -1,6 +1,8 @@
 require('dotenv').config({ path: '.env.local' });
 
 const { createServer } = require('http');
+const https = require('https');
+const fs = require('fs');
 const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
@@ -10,8 +12,28 @@ const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
 const port = parseInt(process.env.PORT || '3000', 10);
 
+// ✅ Configuration HTTPS (optionnel - décommenter pour activer)
+const useHttps = process.env.USE_HTTPS === 'true';
+let httpsOptions = null;
+
+if (useHttps) {
+  try {
+    httpsOptions = {
+      key: fs.readFileSync(process.env.SSL_KEY_PATH || './certs/privkey.pem'),
+      cert: fs.readFileSync(process.env.SSL_CERT_PATH || './certs/fullchain.pem'),
+    };
+    console.log('✅ HTTPS activé');
+  } catch (error) {
+    console.error('❌ Erreur lors du chargement des certificats SSL:', error.message);
+    console.log('ℹ️  Retour en HTTP');
+  }
+}
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
+
+// ✅ Import logger (CommonJS)
+const { logger } = require('./lib/logger.js');
 
 // ✅ Configuration DB - Les mêmes paramètres que lib/db.ts
 // Note: On doit recréer le pool ici car server.js est en CommonJS et ne peut pas importer du TypeScript
@@ -35,28 +57,42 @@ const dbConfig = {
 const pool = mysql.createPool(dbConfig);
 
 app.prepare().then(() => {
-  const httpServer = createServer(async (req, res) => {
-    try {
-      const parsedUrl = parse(req.url, true);
-      await handle(req, res, parsedUrl);
-    } catch (err) {
-      console.error('Error handling request:', err);
-      res.statusCode = 500;
-      res.end('Internal server error');
-    }
-  });
+  // ✅ Créer le serveur HTTP ou HTTPS selon la config
+  const httpServer = httpsOptions
+    ? https.createServer(httpsOptions, async (req, res) => {
+        try {
+          const parsedUrl = parse(req.url, true);
+          await handle(req, res, parsedUrl);
+        } catch (err) {
+          console.error('Error handling request:', err);
+          res.statusCode = 500;
+          res.end('Internal server error');
+        }
+      })
+    : createServer(async (req, res) => {
+        try {
+          const parsedUrl = parse(req.url, true);
+          await handle(req, res, parsedUrl);
+        } catch (err) {
+          console.error('Error handling request:', err);
+          res.statusCode = 500;
+          res.end('Internal server error');
+        }
+      });
 
   // Initialiser Socket.IO
+  const protocol = httpsOptions ? 'https' : 'http';
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.NEXTAUTH_URL || `http://localhost:${port}`,
+      origin: process.env.NEXTAUTH_URL || `${protocol}://localhost:${port}`,
       methods: ['GET', 'POST'],
     },
     path: '/socket.io',
   });
 
   io.on('connection', async (socket) => {
-    console.log(`✅ Client connecté: ${socket.id}`);
+    const connectedUsersCount = io.engine.clientsCount;
+    logger.socket.connected(socket.id, connectedUsersCount);
 
     // ✅ Broadcaster les utilisateurs en ligne à tous
     const broadcastOnlineUsers = async () => {
@@ -79,9 +115,9 @@ app.prepare().then(() => {
           })),
         });
 
-        console.log(`👥 Online users broadcasted: ${onlineUsers.length} users`);
+        logger.socket.eventEmitted('online_users_update', undefined, onlineUsers.length);
       } catch (error) {
-        console.error('Error broadcasting online users:', error);
+        logger.db.error('broadcastOnlineUsers', error);
       }
     };
 
@@ -91,7 +127,7 @@ app.prepare().then(() => {
       const roomName = `game_room_${roomId}`;
 
       await socket.join(roomName);
-      console.log(`👤 ${username} a rejoint la room ${roomName}`);
+      logger.socket.roomJoined(socket.id, roomName, username);
 
       socket.to(roomName).emit('player_joined', { username });
 
@@ -174,7 +210,7 @@ app.prepare().then(() => {
           tieBreaker: tieBreaker || null,
         });
 
-        console.log(`📊 ${votes.length}/${totalPlayers[0].count}${tieBreaker ? ' 🎲' : ''}`);
+        logger.socket.eventEmitted('vote_update', roomName, votes.length);
 
         return { allVoted, tieBreaker, currentDuelIndex, status: gameSession[0].status };
       };
@@ -192,17 +228,17 @@ app.prepare().then(() => {
 
             if (!newState.tieBreaker && newState.currentDuelIndex > data.duelIndex) {
               io.to(roomName).emit('duel_changed', { duelIndex: newState.currentDuelIndex });
-              console.log(`🆕 Duel → ${newState.currentDuelIndex}`);
+              logger.game.duelAdvanced(data.gameSessionId, data.duelIndex, newState.currentDuelIndex);
             }
 
             if (newState.status === 'finished') {
               io.to(roomName).emit('game_ended', { gameSessionId: data.gameSessionId });
-              console.log(`🏁 Finished`);
+              logger.game.finished(data.gameSessionId, 'Unknown', 0);
             }
           }, 500);
         }
       } catch (error) {
-        console.error('❌ vote_cast:', error);
+        logger.socket.error('vote_cast', error, socket.id);
       }
     });
 
@@ -377,7 +413,7 @@ app.prepare().then(() => {
         gameSessionId
       });
 
-      console.log(`🎮 Partie démarrée: ${roomName} (session ${gameSessionId})`);
+      logger.game.started(roomId, gameSessionId, 0, 'System');
     });
 
     // 🎬 Synchronisation vidéo - Play
@@ -430,6 +466,20 @@ app.prepare().then(() => {
       });
 
       console.log(`⚡ Vitesse vidéo ${videoIndex} changée à ${playbackRate}x`);
+    });
+
+    // 🚫 Joueur exclu de la partie
+    socket.on('player_excluded', async (data) => {
+      const { roomId, userId, gameSessionId } = data;
+      const roomName = `game_room_${roomId}`;
+
+      // Notifier tous les joueurs de la room
+      io.to(roomName).emit('player_excluded', {
+        userId,
+        gameSessionId
+      });
+
+      logger.game.playerExcluded(gameSessionId, userId, 'GameMaster');
     });
 
     // ✅ Room créée/supprimée/modifiée - Broadcaster à tous
@@ -499,7 +549,8 @@ app.prepare().then(() => {
     });
 
     socket.on('disconnect', async () => {
-      console.log(`❌ Client déconnecté: ${socket.id}`);
+      const connectedUsersCount = io.engine.clientsCount;
+      logger.socket.disconnected(socket.id, connectedUsersCount);
 
       // Attendre un peu pour que la session soit nettoyée
       setTimeout(async () => {
@@ -510,11 +561,27 @@ app.prepare().then(() => {
 
   httpServer
     .once('error', (err) => {
-      console.error(err);
+      logger.system.error('HTTP Server', err);
       process.exit(1);
     })
     .listen(port, () => {
+      logger.system.startup(port, process.env.NODE_ENV || 'development');
       console.log(`> Ready on http://${hostname}:${port}`);
       console.log(`> Socket.IO server running`);
     });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    logger.system.shutdown();
+    httpServer.close(() => {
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    logger.system.shutdown();
+    httpServer.close(() => {
+      process.exit(0);
+    });
+  });
 });

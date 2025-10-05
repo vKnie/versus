@@ -44,3 +44,7 @@ next-env.d.ts
 /public/uploads/
 /public/configs/
 /public/game_history/
+
+# logs
+/logs/
+*.log

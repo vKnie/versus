@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { query, getUserIdByName } from '@/lib/db';
+import { query } from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
 

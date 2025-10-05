@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     await query('DELETE FROM sessions WHERE user_id = ?', [userId]);
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }

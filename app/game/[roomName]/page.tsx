@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Avatar from '@/components/Avatar';
+import GameMasterMenu from '@/components/GameMasterMenu';
 import { useGameRoom } from '@/lib/useSocket';
 import { Volume2, Check, SkipBack, Pause, Play, SkipForward, AlertTriangle, Trophy } from 'lucide-react';
 
@@ -99,7 +100,7 @@ export default function GamePage() {
   });
 
   // ✅ WebSocket - Connexion à la game room
-  const { socket, isConnected } = useGameRoom(roomId, session?.user?.name || 'Anonymous');
+  const { socket } = useGameRoom(roomId, session?.user?.name || 'Anonymous');
 
   // Charger l'API YouTube
   useEffect(() => {
@@ -288,6 +289,33 @@ export default function GamePage() {
       }
     });
 
+    // 🚫 Joueur exclu de la partie
+    socket.on('player_excluded', async (data: { userId: number; gameSessionId: number }) => {
+      console.log('🚫 Événement player_excluded reçu:', data);
+
+      try {
+        // Récupérer l'utilisateur actuel
+        const currentUserResponse = await fetch('/api/users/me');
+        const currentUser = await currentUserResponse.json();
+        console.log('🚫 Utilisateur actuel:', currentUser);
+        console.log('🚫 Comparaison:', currentUser.id, '===', data.userId);
+
+        // Si c'est moi qui ai été exclu, rediriger vers l'accueil
+        if (currentUser.id === data.userId) {
+          console.log('🚫 JE SUIS EXCLU - Redirection vers l\'accueil');
+          alert('Vous avez été exclu de la partie par le maître du jeu.');
+          window.location.href = '/';
+          return;
+        }
+
+        console.log('🚫 Un autre joueur a été exclu - Rafraîchissement de l\'état');
+        // Sinon, rafraîchir l'état de la partie
+        await fetchGameState();
+      } catch (error) {
+        console.error('🚫 Erreur lors de la gestion de l\'exclusion:', error);
+      }
+    });
+
     // Nettoyage
     return () => {
       socket.off('vote_update');
@@ -301,6 +329,7 @@ export default function GamePage() {
       socket.off('video_pause');
       socket.off('video_seek');
       socket.off('video_rate_change');
+      socket.off('player_excluded');
     };
   }, [socket, roomId, router]);
 
@@ -309,6 +338,42 @@ export default function GamePage() {
     if (!roomId) return;
     fetchGameState();
   }, [roomId]);
+
+  const handleExcludePlayer = async (userId: number) => {
+    if (!gameState?.gameSessionId || !roomId) return;
+
+    try {
+      const response = await fetch('/api/game/exclude-player', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gameSessionId: gameState.gameSessionId,
+          userId,
+          roomId,
+        }),
+      });
+
+      if (response.ok) {
+        // Rafraîchir l'état de la partie
+        await fetchGameState();
+
+        // Notifier via WebSocket
+        socket?.emit('player_excluded', {
+          roomId,
+          userId,
+          gameSessionId: gameState.gameSessionId,
+        });
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Erreur lors de l\'exclusion du joueur');
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'exclusion du joueur:', error);
+      alert('Erreur lors de l\'exclusion du joueur');
+    }
+  };
 
   // Initialiser les players YouTube quand le duel change
   useEffect(() => {
@@ -449,6 +514,7 @@ export default function GamePage() {
         height: '100%',
         width: '100%',
         videoId: videoId1,
+        host: 'https://www.youtube-nocookie.com',
         playerVars: {
           autoplay: 0,
           mute: 1,
@@ -461,6 +527,9 @@ export default function GamePage() {
           showinfo: 0,
           playsinline: 1,
           enablejsapi: 1,
+          // ✅ Paramètres pour compatibilité production
+          origin: typeof window !== 'undefined' ? window.location.origin : undefined,
+          widget_referrer: typeof window !== 'undefined' ? window.location.origin : undefined,
         },
         events: {
           onReady: (event: any) => {
@@ -481,6 +550,18 @@ export default function GamePage() {
             if (!gameState?.isGameMaster) {
               event.target.pauseVideo();
             }
+          },
+          onError: (event: any) => {
+            console.error('❌ Erreur Player 1:', {
+              errorCode: event.data,
+              videoId: videoId1,
+              origin: window.location.origin,
+              errorMessage: event.data === 2 ? 'Invalid parameter'
+                : event.data === 5 ? 'HTML5 player error'
+                : event.data === 100 ? 'Video not found or private'
+                : event.data === 101 || event.data === 150 ? 'Video not allowed to be played in embedded players'
+                : 'Unknown error'
+            });
           }
         }
       });
@@ -491,6 +572,7 @@ export default function GamePage() {
         height: '100%',
         width: '100%',
         videoId: videoId2,
+        host: 'https://www.youtube-nocookie.com',
         playerVars: {
           autoplay: 0,
           mute: 1,
@@ -503,6 +585,9 @@ export default function GamePage() {
           showinfo: 0,
           playsinline: 1,
           enablejsapi: 1,
+          // ✅ Paramètres pour compatibilité production
+          origin: typeof window !== 'undefined' ? window.location.origin : undefined,
+          widget_referrer: typeof window !== 'undefined' ? window.location.origin : undefined,
         },
         events: {
           onReady: (event: any) => {
@@ -523,6 +608,18 @@ export default function GamePage() {
             if (!gameState?.isGameMaster) {
               event.target.pauseVideo();
             }
+          },
+          onError: (event: any) => {
+            console.error('❌ Erreur Player 2:', {
+              errorCode: event.data,
+              videoId: videoId2,
+              origin: window.location.origin,
+              errorMessage: event.data === 2 ? 'Invalid parameter'
+                : event.data === 5 ? 'HTML5 player error'
+                : event.data === 100 ? 'Video not found or private'
+                : event.data === 101 || event.data === 150 ? 'Video not allowed to be played in embedded players'
+                : 'Unknown error'
+            });
           }
         }
       });
@@ -645,7 +742,7 @@ export default function GamePage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json();
 
         // Désactiver le bouton après le clic
         setContinueButtonEnabled(false);
@@ -753,50 +850,82 @@ export default function GamePage() {
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-zinc-200 mb-4">{decodeURIComponent(roomName)}</h1>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Badge Duel */}
-            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2">
-              <span className="text-sm text-zinc-400">Duel</span>
-              <span className="ml-2 text-sm font-semibold text-zinc-200">
-                {gameState.currentDuelIndex + 1} / {gameState.totalDuels}
-              </span>
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Badge Duel */}
+              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2">
+                <span className="text-sm text-zinc-400">Duel</span>
+                <span className="ml-2 text-sm font-semibold text-zinc-200">
+                  {gameState.currentDuelIndex + 1} / {gameState.totalDuels}
+                </span>
+              </div>
+
+              {/* Badge Maître du jeu */}
+              {gameState.gameMaster && (
+                <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-2">
+                  <span className="text-sm text-zinc-400">Maître :</span>
+                  <div className="flex items-center gap-1.5">
+                    <Avatar src={gameState.gameMaster.profilePictureUrl} name={gameState.gameMaster.name} size="xs" />
+                    <span className="text-sm font-medium text-zinc-200">{gameState.gameMaster.name}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Badge Volume */}
+              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-3 min-w-[220px]">
+                <Volume2 className="w-4 h-4 text-zinc-400" />
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={globalVolume}
+                  onChange={(e) => handleGlobalVolumeChange(parseInt(e.target.value))}
+                  className="flex-1 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                  title="Volume global"
+                />
+                <span className="text-xs text-zinc-400 w-9 text-right">{globalVolume}%</span>
+              </div>
+
+              {/* Menu de gestion pour le maître du jeu */}
+              {gameState.isGameMaster && roomId && gameState.gameSessionId && (
+                <GameMasterMenu
+                  roomId={roomId}
+                  gameSessionId={gameState.gameSessionId}
+                  onExcludePlayer={handleExcludePlayer}
+                  currentUserName={session?.user?.name || ''}
+                />
+              )}
             </div>
 
-            {/* Badge Maître du jeu */}
-            {gameState.gameMaster && (
-              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-2">
-                <span className="text-sm text-zinc-400">Maître :</span>
-                <div className="flex items-center gap-1.5">
-                  <Avatar src={gameState.gameMaster.profilePictureUrl} name={gameState.gameMaster.name} size="xs" />
-                  <span className="text-sm font-medium text-zinc-200">{gameState.gameMaster.name}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Badge Votes */}
-            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2">
+            {/* Badge Votes - à droite */}
+            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 relative group">
               <span className="text-sm text-zinc-400">Votes :</span>
               <span className="ml-2 text-sm font-semibold text-zinc-200">
                 {gameState.votes} / {gameState.totalPlayers}
               </span>
               {gameState.allVoted && (
-                <Check className="ml-2 w-3.5 h-3.5 text-emerald-400" />
+                <Check className="ml-2 w-3.5 h-3.5 text-emerald-400 inline" />
               )}
-            </div>
 
-            {/* Badge Volume */}
-            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-3 min-w-[220px]">
-              <Volume2 className="w-4 h-4 text-zinc-400" />
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={globalVolume}
-                onChange={(e) => handleGlobalVolumeChange(parseInt(e.target.value))}
-                className="flex-1 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                title="Volume global"
-              />
-              <span className="text-xs text-zinc-400 w-9 text-right">{globalVolume}%</span>
+              {/* Tooltip qui affiche qui a voté - à gauche du badge */}
+              <div className="absolute hidden group-hover:block top-0 right-full mr-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-50">
+                {gameState.voteDetails && gameState.voteDetails.length > 0 ? (
+                  <>
+                    <p className="text-xs font-semibold text-zinc-300 mb-2">Ont voté :</p>
+                    <div className="space-y-1">
+                      {gameState.voteDetails.map((voter) => (
+                        <div key={voter.userId} className="flex items-center gap-1.5">
+                          <Avatar src={voter.profilePictureUrl} name={voter.name} size="xs" />
+                          <span className="text-xs text-zinc-300">{voter.name}</span>
+                          <Check className="ml-auto w-3 h-3 text-emerald-400" />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-zinc-400 italic">Aucun vote pour le moment</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

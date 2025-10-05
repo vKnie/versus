@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
 
     // Si le nombre d'items n'est pas une puissance de 2, on complète avec des "bye" (passages automatiques)
     const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(items.length)));
-    const byesNeeded = nextPowerOf2 - items.length;
+    const _byesNeeded = nextPowerOf2 - items.length;
 
     // Créer le bracket initial (premier tour)
     const duels: Array<{ item1: any; item2: any; round: number; matchIndex: number }> = [];

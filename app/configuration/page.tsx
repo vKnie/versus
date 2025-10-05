@@ -3,7 +3,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Upload, Plus, PlusSquare, Edit2, Trash2, Save, X, Download, Settings } from 'lucide-react';
+import { ArrowLeft, Upload, Plus, PlusSquare, Edit2, Trash2, Save, X, Download } from 'lucide-react';
 
 interface GameItem {
   name: string;
@@ -97,7 +97,6 @@ export default function ConfigurationPage() {
     const isPowerOfTwo = (n: number) => n > 0 && (n & (n - 1)) === 0;
     if (!isPowerOfTwo(items.length)) {
       const nextPowerOfTwo = Math.pow(2, Math.ceil(Math.log2(items.length)));
-      const itemsToHide = items.length - Math.pow(2, Math.floor(Math.log2(items.length)));
       alert(`⚠️ Attention : Vous avez ${items.length} items. Pour que le tournoi fonctionne correctement, certains items ne seront pas affichés.\n\nNombre d'items recommandé : ${Math.pow(2, Math.floor(Math.log2(items.length)))} ou ${nextPowerOfTwo}\n\nLa configuration sera quand même enregistrée.`);
     }
 

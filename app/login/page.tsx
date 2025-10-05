@@ -3,7 +3,6 @@
 import { signIn, getSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { LogIn, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
@@ -41,7 +40,7 @@ export default function LoginPage() {
         // Rediriger et forcer un reload complet de la page
         window.location.href = '/';
       }
-    } catch (error) {
+    } catch (_error) {
       setError('Une erreur est survenue');
     } finally {
       setLoading(false);

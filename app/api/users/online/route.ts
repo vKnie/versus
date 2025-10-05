@@ -25,7 +25,7 @@ export async function GET() {
       users: onlineUsers
     });
 
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }

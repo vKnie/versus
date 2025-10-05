@@ -54,7 +54,7 @@ async function handleSendMessage(req: NextRequest) {
       success: true,
       message: newMessage[0]
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }

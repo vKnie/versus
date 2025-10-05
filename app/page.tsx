@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Avatar from '@/components/Avatar';
 import { useSocket, useGameRoom } from '@/lib/useSocket';
-import { Send, ArrowLeft, LogIn, X, LogOut, Play, Trash2, Plus, UserPlus, Users, Eye, EyeOff, Settings, Shield, MessageSquare, UserCheck, Home as HomeIcon, UserMinus, Loader2, Gamepad, Crown, FileText, ChevronDown } from 'lucide-react';
+import { Send, LogIn, X, LogOut, Play, Trash2, Plus, UserPlus, Users, Settings, Shield, MessageSquare, UserCheck, Home as HomeIcon, UserMinus, FileText } from 'lucide-react';
 
 interface OnlineUser {
   name: string;
@@ -335,7 +335,7 @@ export default function Home() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json();
         const roomId = userRoom?.room?.id;
 
         // ✅ Émettre événements WebSocket pour notifier tous les clients
@@ -449,7 +449,7 @@ export default function Home() {
     socket.on('game_cancelled', (data: { roomId: number }) => {
       console.log('🚫 Partie annulée reçue:', data);
       // Rafraîchir l'état pour tous les utilisateurs
-      checkUserRoom();
+      fetchUserRoom();
       checkGameSession();
     });
 
@@ -984,7 +984,6 @@ export default function Home() {
               ) : (
                 <div className="space-y-2">
                   {rooms.map((room) => {
-                    const isCreator = userRoom?.room?.id === room.id && userRoom?.room?.isCreator;
                     const isMember = userRoom?.room?.id === room.id;
 
                     // Si c'est le salon de l'utilisateur, ne pas l'afficher dans la liste
@@ -1128,8 +1127,4 @@ export default function Home() {
       </div>
     </div>
   );
-}
-
-function checkUserRoom() {
-  throw new Error('Function not implemented.');
 }

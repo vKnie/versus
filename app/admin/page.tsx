@@ -3,7 +3,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, UserPlus, Save, X, Edit2, Trash2, UserCog, Shield, Upload, Camera } from 'lucide-react';
+import { ArrowLeft, UserPlus, Save, X, Edit2, Trash2 } from 'lucide-react';
 
 interface User {
   id: number;

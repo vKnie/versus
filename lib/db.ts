@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import type { User } from '@/types/user';
+import { logger, LogCategory } from './logger';
 
 // Validate required environment variables
 if (!process.env.DB_HOST) throw new Error('DB_HOST environment variable is required');
@@ -15,13 +16,15 @@ const dbConfig = {
   port: parseInt(process.env.DB_PORT || '3306'),
   charset: 'utf8mb4',
   waitForConnections: true,
-  connectionLimit: 15, // Pool unifié : suffisant pour API routes + Socket.IO
+  connectionLimit: 20, // ✅ OPTIMISÉ: Augmenté de 15 à 20 pour gérer plus de connexions simultanées
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
-  // Optimisations supplémentaires
+  // ✅ OPTIMISATIONS pour performances
   idleTimeout: 60000, // Fermer les connexions inactives après 1 minute
-  maxIdle: 5, // Garder maximum 5 connexions idle
+  maxIdle: 8, // ✅ OPTIMISÉ: Augmenté de 5 à 8 connexions idle
+  connectTimeout: 10000, // ✅ Timeout de connexion à 10s
+  acquireTimeout: 10000, // ✅ Timeout d'acquisition de connexion
 };
 
 let pool: mysql.Pool | null = null;
@@ -29,14 +32,32 @@ let pool: mysql.Pool | null = null;
 export function getPool(): mysql.Pool {
   if (!pool) {
     pool = mysql.createPool(dbConfig);
+    logger.info(LogCategory.DATABASE, 'Database pool created', {
+      connectionLimit: dbConfig.connectionLimit,
+      maxIdle: dbConfig.maxIdle
+    });
   }
   return pool;
 }
 
 export async function query<T = any>(sql: string, params?: any[]): Promise<T[]> {
+  const startTime = Date.now();
   const pool = getPool();
-  const [results] = await pool.execute(sql, params);
-  return results as T[];
+
+  try {
+    const [results] = await pool.execute(sql, params);
+    const duration = Date.now() - startTime;
+
+    // ✅ Log des requêtes lentes uniquement (> 100ms)
+    if (duration > 100) {
+      logger.db.query(sql, duration, Array.isArray(results) ? results.length : 0);
+    }
+
+    return results as T[];
+  } catch (error: any) {
+    logger.db.error('query execution', error, sql);
+    throw error;
+  }
 }
 
 export async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> {

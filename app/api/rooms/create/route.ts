@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName, userHasRole } from '@/lib/db';
-import { withRateLimit } from '@/lib/rate-limit';
+import { logger, LogCategory } from '@/lib/logger';
 
 async function handleCreateRoom(req: NextRequest) {
+  const startTime = Date.now();
+  let username: string | undefined;
+
   try {
     const session = await getServerSession();
+    username = session?.user?.name;
     if (!session || !session.user?.name) {
+      logger.api.error('POST', '/api/rooms/create', new Error('Unauthorized'));
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
@@ -73,16 +78,20 @@ async function handleCreateRoom(req: NextRequest) {
       [roomId, userId]
     );
 
+    const duration = Date.now() - startTime;
+    logger.info(LogCategory.GAME, `Room created: ${roomName.trim()}`, { roomId, configId }, { username: session.user.name });
+    logger.api.request('POST', '/api/rooms/create', 200, duration, session.user.name);
+
     return NextResponse.json({
       success: true,
       roomId,
       message: 'Salon créé avec succès'
     });
-  } catch (error) {
-    console.error('Erreur lors de la création du salon:', error);
+  } catch (error: any) {
+    logger.api.error('POST', '/api/rooms/create', error, username);
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
 
-// Appliquer rate limiting : 5 créations de salon max par heure
-export const POST = withRateLimit(handleCreateRoom, 5, 3600000);
+// Pas de rate limiting pour la création de salon
+export const POST = handleCreateRoom;
