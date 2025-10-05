@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName, userHasRole } from '@/lib/db';
-import fs from 'fs/promises';
-import path from 'path';
+import { configCache } from '@/lib/config-cache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,19 +54,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Configuration non trouvée' }, { status: 404 });
     }
 
-    // Lire le fichier de configuration avec validation du chemin
-    const filePath = configResult[0].file_path.replace(/^\//, ''); // Enlever le slash initial
-    const publicDir = path.join(process.cwd(), 'public');
-    const configPath = path.join(publicDir, filePath);
+    // ✅ OPTIMIZED: Use config cache instead of reading from disk every time
+    const filePath = configResult[0].file_path;
 
-    // Validation de sécurité : vérifier que le chemin résolu est bien dans /public
-    const resolvedPath = path.resolve(configPath);
-    if (!resolvedPath.startsWith(publicDir)) {
-      return NextResponse.json({ error: 'Chemin de fichier invalide' }, { status: 400 });
+    let configData;
+    try {
+      configData = await configCache.load(configId, filePath);
+    } catch (error: any) {
+      if (error.message === 'Invalid file path') {
+        return NextResponse.json({ error: 'Chemin de fichier invalide' }, { status: 400 });
+      }
+      throw error;
     }
-
-    const configContent = await fs.readFile(configPath, 'utf-8');
-    const configData = JSON.parse(configContent);
 
     // Enrichir les items avec les photos de profil (optimisation: une seule requête)
     // Collecter tous les noms uniques

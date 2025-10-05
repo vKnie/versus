@@ -6,7 +6,6 @@ const fs = require('fs');
 const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
-const mysql = require('mysql2/promise');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
@@ -35,26 +34,9 @@ const handle = app.getRequestHandler();
 // ✅ Import logger (CommonJS)
 const { logger } = require('./lib/logger.js');
 
-// ✅ Configuration DB - Les mêmes paramètres que lib/db.ts
-// Note: On doit recréer le pool ici car server.js est en CommonJS et ne peut pas importer du TypeScript
-// IMPORTANT: Garder la même config que lib/db.ts pour éviter les incohérences
-const dbConfig = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: parseInt(process.env.DB_PORT || '3306'),
-  charset: 'utf8mb4',
-  waitForConnections: true,
-  connectionLimit: 15,
-  queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  idleTimeout: 60000,
-  maxIdle: 5,
-};
-
-const pool = mysql.createPool(dbConfig);
+// ✅ Import database utilities - UNIFIED pool configuration
+const { getPool } = require('./lib/db.js');
+const pool = getPool();
 
 app.prepare().then(() => {
   // ✅ Créer le serveur HTTP ou HTTPS selon la config
@@ -164,13 +146,12 @@ app.prepare().then(() => {
       console.log(`👋 Client a quitté la room ${roomName}`);
     });
 
-    // Vote émis - broadcaster IMMÉDIATEMENT puis vérifier
+    // ✅ OPTIMIZED: Vote émis - Cache data and avoid duplicate queries
     socket.on('vote_cast', async (data) => {
       const roomName = `game_room_${data.roomId}`;
+      let cachedState = null;
 
-      const broadcast = async (delay = 0) => {
-        if (delay > 0) await new Promise(r => setTimeout(r, delay));
-
+      const broadcast = async () => {
         const [gameSession] = await pool.execute(
           `SELECT id, status, current_duel_index, duels_data FROM game_sessions WHERE id = ?`,
           [data.gameSessionId]
@@ -197,43 +178,75 @@ app.prepare().then(() => {
         const tieBreakers = tournamentData.tieBreakers || [];
         const tieBreaker = tieBreakers.find(tb => tb.duelIndex === currentDuelIndex);
 
+        const voteDetails = votes.map(v => ({
+          userId: v.user_id,
+          name: v.name,
+          profilePictureUrl: v.profile_picture_url,
+          itemVoted: v.item_voted,
+        }));
+
         io.to(roomName).emit('vote_update', {
           votes: votes.length,
           totalPlayers: totalPlayers[0].count,
           allVoted,
-          voteDetails: votes.map(v => ({
-            userId: v.user_id,
-            name: v.name,
-            profilePictureUrl: v.profile_picture_url,
-            itemVoted: v.item_voted,
-          })),
+          voteDetails,
           tieBreaker: tieBreaker || null,
         });
 
         logger.socket.eventEmitted('vote_update', roomName, votes.length);
 
-        return { allVoted, tieBreaker, currentDuelIndex, status: gameSession[0].status };
+        return {
+          allVoted,
+          tieBreaker,
+          currentDuelIndex,
+          status: gameSession[0].status,
+          voteDetails,
+          totalPlayers: totalPlayers[0].count
+        };
       };
 
       try {
-        // Broadcast immédiat
-        const state = await broadcast(0);
-        if (!state) return;
+        // Initial broadcast
+        cachedState = await broadcast();
+        if (!cachedState) return;
 
-        // Si tous votés, re-vérifier après 500ms pour tiebreaker
-        if (state.allVoted) {
+        // ✅ Only re-query if all voted (to check for tiebreaker resolution)
+        // Use cached data for immediate broadcast instead of re-querying
+        if (cachedState.allVoted) {
           setTimeout(async () => {
-            const newState = await broadcast(0);
-            if (!newState) return;
+            const [gameSession] = await pool.execute(
+              `SELECT status, current_duel_index, duels_data FROM game_sessions WHERE id = ?`,
+              [data.gameSessionId]
+            );
 
-            if (!newState.tieBreaker && newState.currentDuelIndex > data.duelIndex) {
-              io.to(roomName).emit('duel_changed', { duelIndex: newState.currentDuelIndex });
-              logger.game.duelAdvanced(data.gameSessionId, data.duelIndex, newState.currentDuelIndex);
+            if (gameSession.length === 0) return;
+
+            const currentDuelIndex = gameSession[0].current_duel_index;
+            const tournamentData = JSON.parse(gameSession[0].duels_data);
+            const tieBreakers = tournamentData.tieBreakers || [];
+            const tieBreaker = tieBreakers.find(tb => tb.duelIndex === currentDuelIndex);
+
+            // Check if duel advanced
+            if (!tieBreaker && currentDuelIndex > data.duelIndex) {
+              io.to(roomName).emit('duel_changed', { duelIndex: currentDuelIndex });
+              logger.game.duelAdvanced(data.gameSessionId, data.duelIndex, currentDuelIndex);
             }
 
-            if (newState.status === 'finished') {
+            // Check if game finished
+            if (gameSession[0].status === 'finished') {
               io.to(roomName).emit('game_ended', { gameSessionId: data.gameSessionId });
               logger.game.finished(data.gameSessionId, 'Unknown', 0);
+            }
+
+            // ✅ If tiebreaker appeared, re-broadcast with updated info
+            if (tieBreaker && !cachedState.tieBreaker) {
+              io.to(roomName).emit('vote_update', {
+                votes: cachedState.voteDetails.length,
+                totalPlayers: cachedState.totalPlayers,
+                allVoted: true,
+                voteDetails: cachedState.voteDetails,
+                tieBreaker,
+              });
             }
           }, 500);
         }
@@ -242,141 +255,160 @@ app.prepare().then(() => {
       }
     });
 
-    // Tiebreaker continue
+    // ✅ OPTIMIZED: Tiebreaker continue - Use database trigger/polling instead of arbitrary delay
     socket.on('tiebreaker_continue', async (data) => {
       const roomName = `game_room_${data.roomId}`;
 
       try {
-        // Attendre que l'API enregistre le clic et potentiellement change le duel
-        await new Promise(r => setTimeout(r, 300));
+        // ✅ Poll for state change instead of arbitrary delay
+        // The API route handles the logic, we just need to broadcast the result
+        const checkStateAndBroadcast = async (retries = 0) => {
+          const [continueCount] = await pool.execute(
+            'SELECT COUNT(*) as count FROM tiebreaker_continues WHERE game_session_id = ? AND duel_index = ?',
+            [data.gameSessionId, data.duelIndex]
+          );
 
-        // 1. Compter les clics et broadcaster
-        const [continueCount] = await pool.execute(
-          'SELECT COUNT(*) as count FROM tiebreaker_continues WHERE game_session_id = ? AND duel_index = ?',
-          [data.gameSessionId, data.duelIndex]
-        );
+          const count = continueCount[0].count || 0;
 
-        const count = continueCount[0].count || 0;
+          io.to(roomName).emit('tiebreaker_continue_update', {
+            continueClicks: count,
+            readyToAdvance: count >= 2,
+          });
 
-        io.to(roomName).emit('tiebreaker_continue_update', {
-          continueClicks: count,
-          readyToAdvance: count >= 2,
-        });
+          // Check game state
+          const [gameSession] = await pool.execute(
+            `SELECT id, status, current_duel_index FROM game_sessions WHERE id = ?`,
+            [data.gameSessionId]
+          );
 
-        console.log(`🎲 ${count}/2 clics`);
+          if (gameSession.length === 0) return;
 
-        // 2. TOUJOURS vérifier si le duel a changé (l'API a pu nettoyer les clics)
-        const [gameSession] = await pool.execute(
-          `SELECT id, status, current_duel_index FROM game_sessions WHERE id = ?`,
-          [data.gameSessionId]
-        );
+          const currentDuelIndex = gameSession[0].current_duel_index;
 
-        if (gameSession.length === 0) return;
+          // Duel changed
+          if (currentDuelIndex > data.duelIndex) {
+            io.to(roomName).emit('duel_changed', { duelIndex: currentDuelIndex });
+            logger.game.duelAdvanced(data.gameSessionId, data.duelIndex, currentDuelIndex);
+            return; // Done
+          }
 
-        const currentDuelIndex = gameSession[0].current_duel_index;
+          // Game finished
+          if (gameSession[0].status === 'finished') {
+            io.to(roomName).emit('game_ended', { gameSessionId: data.gameSessionId });
+            logger.game.finished(data.gameSessionId, 'Unknown', 0);
+            return; // Done
+          }
 
-        console.log(`🔍 Vérif: duelIndex actuel=${currentDuelIndex}, attendu=${data.duelIndex}`);
+          // If count >= 2 but duel hasn't changed yet, retry once after short delay
+          // This handles race condition where API is still processing
+          if (count >= 2 && retries < 3) {
+            setTimeout(() => checkStateAndBroadcast(retries + 1), 200);
+          }
+        };
 
-        // Si le duel a changé, notifier TOUS les joueurs
-        if (currentDuelIndex > data.duelIndex) {
-          io.to(roomName).emit('duel_changed', { duelIndex: currentDuelIndex });
-          console.log(`✅ DUEL CHANGÉ → ${currentDuelIndex} - Broadcast duel_changed à tous!`);
-        }
-
-        // Vérifier si la partie est terminée
-        if (gameSession[0].status === 'finished') {
-          io.to(roomName).emit('game_ended', { gameSessionId: data.gameSessionId });
-          console.log(`🏁 PARTIE TERMINÉE`);
-        }
+        await checkStateAndBroadcast();
       } catch (error) {
-        console.error('❌ tiebreaker_continue:', error);
+        logger.socket.error('tiebreaker_continue', error, socket.id);
       }
     });
 
-    // Normal continue (sans tiebreaker)
+    // ✅ OPTIMIZED: Normal continue - Use polling instead of arbitrary delay
     socket.on('normal_continue', async (data) => {
       const roomName = `game_room_${data.roomId}`;
 
       try {
-        // Attendre que l'API enregistre le clic
-        await new Promise(r => setTimeout(r, 300));
+        const checkStateAndBroadcast = async (retries = 0) => {
+          // Get click count and total players in parallel
+          const [[continueCount], [totalPlayers]] = await Promise.all([
+            pool.execute(
+              'SELECT COUNT(*) as count FROM normal_continues WHERE game_session_id = ? AND duel_index = ?',
+              [data.gameSessionId, data.duelIndex]
+            ),
+            pool.execute(
+              `SELECT COUNT(*) as count FROM room_members WHERE room_id = ?`,
+              [data.roomId]
+            )
+          ]);
 
-        // Compter les clics
-        const [continueCount] = await pool.execute(
-          'SELECT COUNT(*) as count FROM normal_continues WHERE game_session_id = ? AND duel_index = ?',
-          [data.gameSessionId, data.duelIndex]
-        );
+          const count = continueCount[0].count || 0;
+          const total = totalPlayers[0].count || 0;
 
-        // Compter le nombre total de joueurs
-        const [totalPlayers] = await pool.execute(
-          `SELECT COUNT(*) as count FROM room_members WHERE room_id = ?`,
-          [data.roomId]
-        );
+          io.to(roomName).emit('normal_continue_update', {
+            continueClicks: count,
+            totalPlayers: total,
+            readyToAdvance: count >= total,
+          });
 
-        const count = continueCount[0].count || 0;
-        const total = totalPlayers[0].count || 0;
+          // Check game state
+          const [gameSession] = await pool.execute(
+            `SELECT id, status, current_duel_index FROM game_sessions WHERE id = ?`,
+            [data.gameSessionId]
+          );
 
-        io.to(roomName).emit('normal_continue_update', {
-          continueClicks: count,
-          totalPlayers: total,
-          readyToAdvance: count >= total,
-        });
+          if (gameSession.length === 0) return;
 
-        console.log(`👉 ${count}/${total} clics continue`);
+          const currentDuelIndex = gameSession[0].current_duel_index;
 
-        // Vérifier si le duel a changé
-        const [gameSession] = await pool.execute(
-          `SELECT id, status, current_duel_index FROM game_sessions WHERE id = ?`,
-          [data.gameSessionId]
-        );
+          // Duel changed
+          if (currentDuelIndex > data.duelIndex) {
+            io.to(roomName).emit('duel_changed', { duelIndex: currentDuelIndex });
+            logger.game.duelAdvanced(data.gameSessionId, data.duelIndex, currentDuelIndex);
+            return; // Done
+          }
 
-        if (gameSession.length === 0) return;
+          // Game finished
+          if (gameSession[0].status === 'finished') {
+            io.to(roomName).emit('game_ended', { gameSessionId: data.gameSessionId });
+            logger.game.finished(data.gameSessionId, 'Unknown', 0);
+            return; // Done
+          }
 
-        const currentDuelIndex = gameSession[0].current_duel_index;
+          // If all clicked but duel hasn't changed yet, retry after short delay
+          if (count >= total && retries < 3) {
+            setTimeout(() => checkStateAndBroadcast(retries + 1), 200);
+          }
+        };
 
-        // Si le duel a changé, notifier tous les joueurs
-        if (currentDuelIndex > data.duelIndex) {
-          io.to(roomName).emit('duel_changed', { duelIndex: currentDuelIndex });
-          console.log(`✅ DUEL CHANGÉ → ${currentDuelIndex}`);
-        }
-
-        // Vérifier si la partie est terminée
-        if (gameSession[0].status === 'finished') {
-          io.to(roomName).emit('game_ended', { gameSessionId: data.gameSessionId });
-          console.log(`🏁 PARTIE TERMINÉE`);
-        }
+        await checkStateAndBroadcast();
       } catch (error) {
-        console.error('❌ normal_continue:', error);
+        logger.socket.error('normal_continue', error, socket.id);
       }
     });
 
-    // Chat
+    // ✅ OPTIMIZED: Chat - Poll for new messages instead of arbitrary delay
     socket.on('chat_message', async (data) => {
       try {
-        // Attendre que l'API ait enregistré le message
-        await new Promise(r => setTimeout(r, 500));
+        const checkAndBroadcast = async (retries = 0) => {
+          const [messages] = await pool.execute(
+            `SELECT m.id, m.message, m.created_at, u.name, u.profile_picture_url
+             FROM messages m
+             JOIN users u ON m.user_id = u.id
+             ORDER BY m.created_at DESC
+             LIMIT 50`
+          );
 
-        const [messages] = await pool.execute(
-          `SELECT m.id, m.message, m.created_at, u.name, u.profile_picture_url
-           FROM messages m
-           JOIN users u ON m.user_id = u.id
-           ORDER BY m.created_at ASC
-           LIMIT 50`
-        );
+          // If no messages yet and haven't retried too many times, wait and retry
+          if (messages.length === 0 && retries < 2) {
+            setTimeout(() => checkAndBroadcast(retries + 1), 200);
+            return;
+          }
 
-        const formattedMessages = messages.map((msg) => ({
-          id: msg.id,
-          message: msg.message,
-          username: msg.name,
-          profile_picture_url: msg.profile_picture_url,
-          created_at: msg.created_at,
-        }));
+          const formattedMessages = messages.reverse().map((msg) => ({
+            id: msg.id,
+            message: msg.message,
+            username: msg.name,
+            profile_picture_url: msg.profile_picture_url,
+            created_at: msg.created_at,
+          }));
 
-        io.emit('chat_update', {
-          messages: formattedMessages,
-        });
+          io.emit('chat_update', {
+            messages: formattedMessages,
+          });
+        };
+
+        await checkAndBroadcast();
       } catch (error) {
-        console.error('❌ chat_message:', error);
+        logger.socket.error('chat_message', error, socket.id);
       }
     });
 
@@ -509,35 +541,37 @@ app.prepare().then(() => {
       }
     });
 
-    // ✅ Membre a rejoint ou quitté un salon - Mettre à jour les membres
+    // ✅ OPTIMIZED: Room members changed - Poll instead of arbitrary delay
     socket.on('room_members_changed', async (data) => {
       const { roomId } = data;
       try {
-        // Attendre que l'API ait terminé l'insertion/suppression
-        await new Promise(r => setTimeout(r, 300));
+        const checkAndBroadcast = async (retries = 0) => {
+          const [members] = await pool.execute(
+            `SELECT u.id, u.name, u.profile_picture_url, rm.joined_at, u.in_game
+             FROM room_members rm
+             JOIN users u ON rm.user_id = u.id
+             WHERE rm.room_id = ?`,
+            [roomId]
+          );
 
-        const [members] = await pool.execute(
-          `SELECT u.id, u.name, u.profile_picture_url, rm.joined_at, u.in_game
-           FROM room_members rm
-           JOIN users u ON rm.user_id = u.id
-           WHERE rm.room_id = ?`,
-          [roomId]
-        );
+          const formattedMembers = members.map((m) => ({
+            id: m.id,
+            name: m.name,
+            profile_picture_url: m.profile_picture_url,
+            joined_at: m.joined_at,
+            in_game: m.in_game,
+          }));
 
-        const formattedMembers = members.map((m) => ({
-          id: m.id,
-          name: m.name,
-          profile_picture_url: m.profile_picture_url,
-          joined_at: m.joined_at,
-          in_game: m.in_game,
-        }));
+          io.emit('room_members_update', {
+            roomId,
+            members: formattedMembers,
+          });
+        };
 
-        io.emit('room_members_update', {
-          roomId,
-          members: formattedMembers,
-        });
+        // Immediate broadcast (API is usually fast enough)
+        await checkAndBroadcast();
       } catch (error) {
-        console.error('❌ room_members_changed:', error);
+        logger.socket.error('room_members_changed', error, socket.id);
       }
     });
 

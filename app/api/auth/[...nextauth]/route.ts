@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { queryOne, query } from '@/lib/db';
+import { sessionCache } from '@/lib/session-cache';
 
 interface User {
   id: number;
@@ -79,16 +80,30 @@ const handler = NextAuth({
       if (token?.id) {
         session.user.id = token.id as string;
 
-        // ✅ Vérifier si la session existe toujours en base de données
-        const dbSession = await queryOne(
-          'SELECT * FROM sessions WHERE user_id = ? AND expires > NOW()',
-          [token.id]
-        );
+        // ✅ OPTIMIZED: Use session cache to reduce database queries
+        const sessionToken = `session_${token.id}_cache`;
+        const cachedSession = sessionCache.get(sessionToken);
 
-        // Si la session n'existe plus en DB, on invalide la session
-        if (!dbSession) {
-          console.log(`⚠️ Session expirée ou supprimée pour l'utilisateur ${token.id}`);
-          throw new Error('Session invalidée');
+        if (!cachedSession) {
+          // Cache miss - verify in database
+          const dbSession: any = await queryOne(
+            'SELECT user_id, expires FROM sessions WHERE user_id = ? AND expires > NOW()',
+            [token.id]
+          );
+
+          // If session doesn't exist in DB, invalidate
+          if (!dbSession) {
+            console.log(`⚠️ Session expirée ou supprimée pour l'utilisateur ${token.id}`);
+            throw new Error('Session invalidée');
+          }
+
+          // Cache the session for future requests
+          sessionCache.set(
+            sessionToken,
+            parseInt(token.id as string),
+            session.user.name || '',
+            new Date(dbSession.expires)
+          );
         }
       }
       return session;

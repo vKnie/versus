@@ -18,8 +18,22 @@ async function handleVote(req: NextRequest) {
 
     const { gameSessionId, duelIndex, itemVoted } = await req.json();
 
+    // ✅ SECURITY: Input validation to prevent SQL injection and invalid data
     if (!gameSessionId || duelIndex === undefined || !itemVoted) {
       return NextResponse.json({ error: 'Données manquantes' }, { status: 400 });
+    }
+
+    // Validate types and ranges
+    if (typeof gameSessionId !== 'number' || gameSessionId <= 0) {
+      return NextResponse.json({ error: 'ID de session invalide' }, { status: 400 });
+    }
+
+    if (typeof duelIndex !== 'number' || duelIndex < 0) {
+      return NextResponse.json({ error: 'Index de duel invalide' }, { status: 400 });
+    }
+
+    if (typeof itemVoted !== 'string' || itemVoted.length === 0 || itemVoted.length > 500) {
+      return NextResponse.json({ error: 'Item voté invalide' }, { status: 400 });
     }
 
     const userId = await getUserIdByName(session.user.name);

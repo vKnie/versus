@@ -465,23 +465,34 @@ export default function GamePage() {
   };
 
   const initializePlayers = (duel: any) => {
-    // Nettoyer les anciens players avant d'en créer de nouveaux (fix memory leak)
-    if (player1Ref.current) {
-      try {
-        player1Ref.current.destroy();
-      } catch (e) {
-        console.error('Error destroying player1:', e);
+    // ✅ OPTIMIZED: Properly cleanup players to prevent memory leaks
+    const destroyPlayer = (playerRef: React.MutableRefObject<any>, playerName: string) => {
+      if (playerRef.current) {
+        try {
+          // Remove all event listeners first
+          if (playerRef.current.removeEventListener) {
+            playerRef.current.removeEventListener('onStateChange');
+            playerRef.current.removeEventListener('onPlaybackRateChange');
+          }
+
+          // Stop video and destroy player
+          if (typeof playerRef.current.stopVideo === 'function') {
+            playerRef.current.stopVideo();
+          }
+          if (typeof playerRef.current.destroy === 'function') {
+            playerRef.current.destroy();
+          }
+        } catch (e) {
+          console.error(`Error destroying ${playerName}:`, e);
+        } finally {
+          // Always null the ref
+          playerRef.current = null;
+        }
       }
-      player1Ref.current = null;
-    }
-    if (player2Ref.current) {
-      try {
-        player2Ref.current.destroy();
-      } catch (e) {
-        console.error('Error destroying player2:', e);
-      }
-      player2Ref.current = null;
-    }
+    };
+
+    destroyPlayer(player1Ref, 'player1');
+    destroyPlayer(player2Ref, 'player2');
 
     const videoId1 = extractYouTubeId(duel.item1.youtubeLink);
     const videoId2 = extractYouTubeId(duel.item2.youtubeLink);

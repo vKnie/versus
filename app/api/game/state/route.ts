@@ -71,34 +71,54 @@ export async function GET(req: NextRequest) {
     const currentDuel = duels[session_data.current_duel_index];
     const currentRound = tournamentData.currentRound;
 
-    // Récupérer les photos de profil des personnes qui ont proposé les items
+    // ✅ OPTIMIZED: Batch fetch all proposer profiles in ONE query instead of N+1 queries
     const enrichDuelWithProfiles = async (duel: any) => {
-      const enrichItem = async (item: any) => {
-        const proposedByWithProfiles = await Promise.all(
-          item.proposedBy.map(async (person: string | { name: string; profilePictureUrl?: string | null }) => {
-            // Si c'est déjà un objet avec profilePictureUrl, le retourner tel quel
-            if (typeof person === 'object' && person !== null) {
-              return person;
-            }
+      // Collect all unique proposer names from both items
+      const allProposers: string[] = [];
 
-            // Sinon, c'est une string, récupérer la photo de profil
-            const personName = person as string;
-            const userProfile: any = await query(
-              'SELECT name, profile_picture_url FROM users WHERE name = ?',
-              [personName]
-            );
-            return {
-              name: personName,
-              profilePictureUrl: userProfile.length > 0 ? userProfile[0].profile_picture_url : null
-            };
-          })
+      const collectProposers = (item: any) => {
+        item.proposedBy.forEach((person: string | { name: string; profilePictureUrl?: string | null }) => {
+          if (typeof person === 'string') {
+            allProposers.push(person);
+          }
+        });
+      };
+
+      collectProposers(duel.item1);
+      collectProposers(duel.item2);
+
+      // Remove duplicates
+      const uniqueProposers = [...new Set(allProposers)];
+
+      // ✅ Single batched query with IN clause instead of N separate queries
+      let profileMap = new Map<string, string | null>();
+      if (uniqueProposers.length > 0) {
+        const placeholders = uniqueProposers.map(() => '?').join(',');
+        const profiles: any = await query(
+          `SELECT name, profile_picture_url FROM users WHERE name IN (${placeholders})`,
+          uniqueProposers
         );
+        profileMap = new Map(profiles.map((p: any) => [p.name, p.profile_picture_url]));
+      }
+
+      // Enrich items with fetched profiles
+      const enrichItem = (item: any) => {
+        const proposedByWithProfiles = item.proposedBy.map((person: string | { name: string; profilePictureUrl?: string | null }) => {
+          if (typeof person === 'object' && person !== null) {
+            return person;
+          }
+          const personName = person as string;
+          return {
+            name: personName,
+            profilePictureUrl: profileMap.get(personName) || null
+          };
+        });
         return { ...item, proposedBy: proposedByWithProfiles };
       };
 
       return {
-        item1: await enrichItem(duel.item1),
-        item2: await enrichItem(duel.item2)
+        item1: enrichItem(duel.item1),
+        item2: enrichItem(duel.item2)
       };
     };
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName } from '@/lib/db';
+import { sessionCache } from '@/lib/session-cache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +15,9 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 400 });
     }
+
+    // ✅ OPTIMIZED: Invalidate cache on signout
+    sessionCache.invalidateUser(userId);
 
     await query('DELETE FROM sessions WHERE user_id = ?', [userId]);
 

@@ -16,7 +16,11 @@ CREATE TABLE IF NOT EXISTS users (
     profile_picture_url VARCHAR(500) DEFAULT NULL,
     in_game BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    -- ✅ OPTIMISATION: Index pour recherche par nom (getUserIdByName)
+    INDEX idx_users_name (name),
+    -- ✅ OPTIMISATION: Index pour filtrer par statut de jeu
+    INDEX idx_users_in_game (in_game)
 );
 
 -- Table des rôles utilisateur
@@ -27,6 +31,10 @@ CREATE TABLE IF NOT EXISTS user_roles (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_user_role (user_id, role),
     INDEX idx_user_id (user_id),
+    -- ✅ OPTIMISATION: Index pour recherche par rôle
+    INDEX idx_user_roles_role (role),
+    -- ✅ OPTIMISATION: Index composite pour vérification user+role (userHasRole)
+    INDEX idx_user_roles_user_role (user_id, role),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -41,6 +49,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     INDEX idx_user_id (user_id),
     INDEX idx_session_token (session_token),
     INDEX idx_expires (expires),
+    -- ✅ OPTIMISATION: Index composite pour validation de session (broadcastOnlineUsers)
+    INDEX idx_sessions_user_expires (user_id, expires),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -73,8 +83,10 @@ CREATE TABLE IF NOT EXISTS rooms (
     created_by INT NOT NULL,
     config_id INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_created_by (created_by),
-    INDEX idx_config_id (config_id),
+    -- ✅ OPTIMISATION: Index pour recherche par créateur
+    INDEX idx_rooms_creator (created_by),
+    -- ✅ OPTIMISATION: Index pour recherche par config
+    INDEX idx_rooms_config (config_id),
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (config_id) REFERENCES game_configurations(id) ON DELETE SET NULL
 );
@@ -86,8 +98,12 @@ CREATE TABLE IF NOT EXISTS room_members (
     user_id INT NOT NULL,
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_room_user (room_id, user_id),
-    INDEX idx_room_id (room_id),
-    INDEX idx_user_id (user_id),
+    -- ✅ OPTIMISATION: Index pour récupérer tous les membres d'un salon (très fréquent)
+    INDEX idx_room_members_room (room_id),
+    -- ✅ OPTIMISATION: Index pour récupérer les salons d'un utilisateur
+    INDEX idx_room_members_user (user_id),
+    -- ✅ OPTIMISATION: Index composite pour vérifier si user est dans room
+    INDEX idx_room_members_room_user (room_id, user_id),
     FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -100,7 +116,12 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     duels_data JSON NOT NULL,
     video_start_time TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_status (status)
+    -- ✅ OPTIMISATION: Index pour filtrer par statut
+    INDEX idx_game_sessions_status (status),
+    -- ✅ OPTIMISATION: Index pour recherche par duel actuel
+    INDEX idx_game_sessions_duel_index (current_duel_index),
+    -- ✅ OPTIMISATION: Index composite pour recherche status+duel
+    INDEX idx_game_sessions_status_duel (status, current_duel_index)
 );
 
 -- Table des votes temporaires (nettoyés après sauvegarde historique)
@@ -112,8 +133,10 @@ CREATE TABLE IF NOT EXISTS votes (
     item_voted VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_vote (game_session_id, user_id, duel_index),
-    INDEX idx_game_session (game_session_id, duel_index),
-    INDEX idx_user_id (user_id),
+    -- ✅ OPTIMISATION: Index composite pour récupérer tous les votes d'un duel (le plus fréquent)
+    INDEX idx_votes_session_duel (game_session_id, duel_index),
+    -- ✅ OPTIMISATION: Index pour recherche par utilisateur
+    INDEX idx_votes_user (user_id),
     FOREIGN KEY (game_session_id) REFERENCES game_sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -126,7 +149,8 @@ CREATE TABLE IF NOT EXISTS tiebreaker_continues (
     user_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_continue (game_session_id, duel_index, user_id),
-    INDEX idx_game_duel (game_session_id, duel_index),
+    -- ✅ OPTIMISATION: Index composite pour compter les clics sur un duel
+    INDEX idx_tiebreaker_continues_session_duel (game_session_id, duel_index),
     FOREIGN KEY (game_session_id) REFERENCES game_sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -139,7 +163,8 @@ CREATE TABLE IF NOT EXISTS normal_continues (
     user_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_normal_continue (game_session_id, duel_index, user_id),
-    INDEX idx_game_duel_normal (game_session_id, duel_index),
+    -- ✅ OPTIMISATION: Index composite pour compter les clics sur un duel
+    INDEX idx_normal_continues_session_duel (game_session_id, duel_index),
     FOREIGN KEY (game_session_id) REFERENCES game_sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
