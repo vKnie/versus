@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(do sed -i 's/} catch (error) {/} catch (_error) {/g' \"$file\")"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}
