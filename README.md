@@ -10,50 +10,60 @@
 
 ## Description
 
-**Versus** est une application web interactive permettant à plusieurs joueurs de s'affronter dans des duels de votes sur des contenus YouTube en temps réel. Les utilisateurs créent des salons, invitent des amis et votent pour leurs contenus préférés dans un système de tournoi bracket.
+**Versus** est une application web interactive permettant à plusieurs joueurs de s'affronter dans des duels de votes sur des contenus YouTube en temps réel. Les utilisateurs créent des salons, invitent des amis et votent pour leurs contenus préférés dans un système de tournoi *bracket*.
 
+> [!IMPORTANT]
 > Cette application nécessite une base de données MySQL et un serveur Node.js pour fonctionner correctement.
 
 ## Fonctionnalités Principales
 
 ### Gestion des Utilisateurs
-- **Authentification sécurisée** avec NextAuth.js
-- **Système de rôles** : admin, config_creator, room_creator
-- **Profils personnalisés** avec photo de profil
-- **Gestion des sessions** en temps réel
-- **Liste des utilisateurs en ligne** avec statut (En jeu / Disponible)
+- [x] **Authentification sécurisée** avec NextAuth.js
+- [x] **Système de rôles** : `admin`, `config_creator`, `room_creator`
+- [x] **Profils personnalisés** avec photo de profil
+- [x] **Gestion des sessions** en temps réel
+- [x] **Liste des utilisateurs en ligne** avec statut (_En jeu_ / _Disponible_)
 
 ### Salons de Jeu
-- **Création de salons privés** par les utilisateurs autorisés
-- **Système d'invitation** et de gestion des membres
-- **Chat en direct** dans chaque salon
-- **Expulsion de membres** (pour le créateur)
-- **Suppression de salons** (pour le créateur)
+- [x] **Création de salons privés** par les utilisateurs autorisés
+- [x] **Système d'invitation** et de gestion des membres
+- [x] **Chat en direct** dans chaque salon
+- [x] **Expulsion de membres** (pour le créateur)
+- [x] **Suppression de salons** (pour le créateur)
 
 ### Système de Jeu
-- **Duels vidéo YouTube** en format tournoi
-- **Votes synchronisés** entre tous les joueurs
-- **Lecteurs vidéo intégrés** avec contrôles synchronisés
-- **Système de tie-breaker** automatique en cas d'égalité
-- **Menu Game Master** pour gérer la partie (exclusion de joueurs, etc.)
-- **Synchronisation vidéo** : play, pause, seek, vitesse de lecture
-- **Résultats détaillés** avec historique des votes
+- [x] **Duels vidéo YouTube** en format tournoi
+- [x] **Votes synchronisés** entre tous les joueurs
+- [x] **Lecteurs vidéo intégrés** avec contrôles synchronisés
+- [x] **Système de tie-breaker** automatique en cas d'égalité
+- [x] **Menu Game Master** pour gérer la partie (exclusion de joueurs, etc.)
+- [x] **Synchronisation vidéo** : play, pause, seek, vitesse de lecture
+- [x] **Résultats détaillés** avec historique des votes
 
 ### Chat Global
-- **Messagerie en temps réel** pour tous les utilisateurs
-- **Cooldown anti-spam** (2 secondes entre chaque message)
-- **Affichage des profils** avec avatars
-- **Horodatage** des messages
+- [x] **Messagerie en temps réel** pour tous les utilisateurs
+- [x] **Cooldown anti-spam** (2 secondes entre chaque message)
+- [x] **Affichage des profils** avec avatars
+- [x] **Horodatage** des messages
 
 ### Configuration & Administration
-- **Interface de configuration** pour créer des tournois personnalisés
-- **Upload de fichiers JSON** pour définir les duels
-- **Gestion des utilisateurs** (création, suppression, modification de rôles)
-- **Nettoyage automatique** des sessions expirées
+- [x] **Interface de configuration** pour créer des tournois personnalisés
+- [x] **Upload de fichiers JSON** pour définir les duels
+- [x] **Gestion des utilisateurs** (création, suppression, modification de rôles)
+- [x] **Nettoyage automatique** des sessions expirées
 
 ## Architecture Technique
 
 ### Stack Technologique
+
+| Catégorie | Technologies |
+|-----------|--------------|
+| **Frontend** | Next.js 15.5.4, React 19.1.0, TypeScript, Tailwind CSS 4 |
+| **Backend** | Node.js, Next.js API Routes, Socket.IO Server, NextAuth.js |
+| **Base de données** | MySQL 8.x avec mysql2 |
+| **Sécurité** | bcryptjs, NextAuth Sessions, Rate Limiting |
+| **Temps réel** | Socket.IO (Client & Server) |
+| **Dev Tools** | tsx, ESLint, dotenv |
 
 #### Frontend
 - [**Next.js 15.5.4**](https://nextjs.org/) - Framework React avec App Router
@@ -127,6 +137,7 @@ versus/
 
 ## Installation
 
+> [!NOTE]
 > Assurez-vous d'avoir Node.js >= 18.x et MySQL >= 8.x installés avant de commencer.
 
 ### Prérequis
@@ -138,7 +149,7 @@ versus/
 
 1. **Cloner le repository**
 ```bash
-git clone <repository-url>
+git clone [text](https://github.com/vKnie/versus)
 cd versus
 ```
 
@@ -159,7 +170,7 @@ CREATE DATABASE versus_db;
 cp .env.example .env.local
 ```
 
-Éditer `.env.local` avec vos informations :
+Éditer [`.env.local`](.env.local) avec vos informations :
 ```env
 # NextAuth Configuration
 NEXTAUTH_URL=http://localhost:3000
@@ -206,26 +217,29 @@ L'application sera accessible sur `http://localhost:3000`
 
 ### Tables Principales
 
-- **users** : Utilisateurs et leurs informations
-- **sessions** : Sessions d'authentification NextAuth
-- **rooms** : Salons de jeu
-- **room_members** : Membres des salons
-- **game_sessions** : Sessions de jeu actives
-- **votes** : Votes des joueurs
-- **messages** : Messages du chat global
-- **user_roles** : Rôles des utilisateurs
-- **game_configurations** : Configurations de tournois
-- **normal_continues** : Clics de continuation normale
-- **tiebreaker_continues** : Clics de continuation après tie-breaker
+| Table | Description | Colonnes clés |
+|-------|-------------|---------------|
+| **users** | Utilisateurs et leurs informations | `id`, `username`, `email`, `password`, `role` |
+| **sessions** | Sessions d'authentification NextAuth | `sessionToken`, `userId`, `expires` |
+| **rooms** | Salons de jeu | `id`, `name`, `creatorId`, `configId` |
+| **room_members** | Membres des salons | `roomId`, `userId`, `joinedAt` |
+| **game_sessions** | Sessions de jeu actives | `id`, `roomId`, `status`, `currentDuelIndex` |
+| **votes** | Votes des joueurs | `gameSessionId`, `userId`, `itemId` |
+| **messages** | Messages du chat global | `id`, `userId`, `content`, `timestamp` |
+| **user_roles** | Rôles des utilisateurs | `userId`, `role` |
+| **game_configurations** | Configurations de tournois | `id`, `name`, `filePath`, `createdBy` |
+| **normal_continues** | Clics de continuation normale | `gameSessionId`, `userId` |
+| **tiebreaker_continues** | Clics de continuation après tie-breaker | `gameSessionId`, `userId` |
 
+> [!WARNING]
 > Le schéma de base de données complet doit être importé manuellement. Référez-vous à la documentation SQL du projet.
 
 ## Configuration
 
 ### Créer une Configuration de Jeu
 
-1. Se connecter en tant qu'admin ou config_creator
-2. Accéder à `/configuration`
+1. Se connecter en tant qu'`admin` ou `config_creator`
+2. Accéder à [/configuration](http://localhost:3000/configuration)
 3. Créer un fichier JSON avec la structure suivante :
 
 ```json
@@ -247,6 +261,7 @@ L'application sera accessible sur `http://localhost:3000`
 
 4. Uploader le fichier via l'interface
 
+> [!NOTE]
 > Vous pouvez créer des tournois avec un nombre de participants flexible. L'algorithme créera automatiquement un bracket équilibré.
 
 ## Utilisation
@@ -267,76 +282,87 @@ L'application sera accessible sur `http://localhost:3000`
 4. **Lancer la partie** quand tout le monde est prêt
 5. **Utiliser le menu Game Master** pour gérer la partie si nécessaire
 
+> [!CAUTION]
 > Le créateur d'un salon ne peut pas le quitter sans le supprimer. Assurez-vous de vouloir créer un salon avant de confirmer.
 
 ### Pour les Administrateurs
 
-1. **Accéder au panel d'administration** (`/admin`)
+1. **Accéder au panel d'administration** ([/admin](http://localhost:3000/admin))
 2. **Gérer les utilisateurs** : création, suppression, rôles
 3. **Nettoyer les données** : sessions expirées, logs anciens
 4. **Configurer les rôles** pour autoriser la création de salons/configs
 
+> [!WARNING]
 > Les actions d'administration sont irréversibles. Soyez prudent lors de la suppression d'utilisateurs ou de données.
 
 ## Sécurité
 
-- **Authentification sécurisée** avec bcrypt
-- **Sessions HTTP-only cookies** via NextAuth
-- **Protection CSRF** intégrée
-- **Rate limiting** sur les endpoints sensibles (chat)
-- **Validation des entrées** côté serveur
-- **Headers de sécurité** configurés dans Next.js
-- **SQL préparé** pour prévenir les injections SQL
+- [x] **Authentification sécurisée** avec `bcrypt`
+- [x] **Sessions HTTP-only cookies** via NextAuth
+- [x] **Protection CSRF** intégrée
+- [x] **Rate limiting** sur les endpoints sensibles (chat)
+- [x] **Validation des entrées** côté serveur
+- [x] **Headers de sécurité** configurés dans Next.js
+- [x] **SQL préparé** pour prévenir les injections SQL
 
+> [!IMPORTANT]
 > En production, configurez toujours HTTPS et utilisez des mots de passe complexes pour la base de données.
 
 ## WebSocket Events
 
 ### Événements Client → Serveur
-- `join_game_room` : Rejoindre un salon de jeu
-- `leave_game_room` : Quitter un salon de jeu
-- `vote_cast` : Émettre un vote
-- `chat_message` : Envoyer un message
-- `game_started` : Démarrer une partie
-- `game_cancelled` : Annuler une partie
-- `video_play/pause/seek/rate_change` : Contrôles vidéo
-- `player_excluded` : Exclure un joueur
-- `rooms_changed` : Notifier un changement de salons
-- `room_members_changed` : Notifier un changement de membres
-- `tiebreaker_continue` : Continuer après tie-breaker
-- `normal_continue` : Continuer après un duel
+
+| Événement | Description | Paramètres |
+|-----------|-------------|------------|
+| `join_game_room` | Rejoindre un salon de jeu | `roomName`, `userId` |
+| `leave_game_room` | Quitter un salon de jeu | `roomName` |
+| `vote_cast` | Émettre un vote | `gameSessionId`, `itemId` |
+| `chat_message` | Envoyer un message | `content`, `userId` |
+| `game_started` | Démarrer une partie | `roomId` |
+| `game_cancelled` | Annuler une partie | `gameSessionId` |
+| `video_play/pause/seek/rate_change` | Contrôles vidéo | `timestamp`, `rate` |
+| `player_excluded` | Exclure un joueur | `userId`, `gameSessionId` |
+| `rooms_changed` | Notifier un changement de salons | - |
+| `room_members_changed` | Notifier un changement de membres | `roomId` |
+| `tiebreaker_continue` | Continuer après tie-breaker | `gameSessionId` |
+| `normal_continue` | Continuer après un duel | `gameSessionId` |
 
 ### Événements Serveur → Client
-- `online_users_update` : Mise à jour des utilisateurs en ligne
-- `chat_update` : Nouveaux messages du chat
-- `rooms_update` : Mise à jour des salons
-- `room_members_update` : Mise à jour des membres
-- `vote_update` : Mise à jour des votes
-- `duel_changed` : Changement de duel
-- `game_ended` : Fin de partie
-- `game_cancelled` : Partie annulée
-- `game_started` : Partie démarrée
-- `video_play/pause/seek/rate_change` : Synchronisation vidéo
-- `player_excluded` : Joueur exclu
-- `tiebreaker_continue_update` : Update tie-breaker
-- `normal_continue_update` : Update continuation normale
 
+| Événement | Description | Données retournées |
+|-----------|-------------|-------------------|
+| `online_users_update` | Mise à jour des utilisateurs en ligne | Liste des utilisateurs |
+| `chat_update` | Nouveaux messages du chat | Messages récents |
+| `rooms_update` | Mise à jour des salons | Liste des salons |
+| `room_members_update` | Mise à jour des membres | Membres du salon |
+| `vote_update` | Mise à jour des votes | Votes actuels |
+| `duel_changed` | Changement de duel | Nouveau duel |
+| `game_ended` | Fin de partie | Résultats finaux |
+| `game_cancelled` | Partie annulée | Raison |
+| `game_started` | Partie démarrée | Configuration |
+| `video_play/pause/seek/rate_change` | Synchronisation vidéo | État vidéo |
+| `player_excluded` | Joueur exclu | `userId` |
+| `tiebreaker_continue_update` | Update tie-breaker | État tie-breaker |
+| `normal_continue_update` | Update continuation normale | État continuation |
+
+> [!NOTE]
 > Les événements WebSocket sont automatiquement gérés par Socket.IO avec reconnexion automatique en cas de déconnexion.
 
 ## Logs
 
-Les logs sont stockés dans le dossier `logs/` avec rotation quotidienne :
-- Format : `app-YYYY-MM-DD.log`
-- Catégories : AUTH, DATABASE, GAME, SOCKET, API, SYSTEM
-- Niveaux : DEBUG, INFO, WARN, ERROR
+Les logs sont stockés dans le dossier [`logs/`](logs/) avec rotation quotidienne[^1] :
+- **Format** : `app-YYYY-MM-DD.log`
+- **Catégories** : `AUTH`, `DATABASE`, `GAME`, `SOCKET`, `API`, `SYSTEM`
+- **Niveaux** : `DEBUG`, `INFO`, `WARN`, `ERROR`
 
+> [!TIP]
 > En développement, seuls les logs INFO, WARN et ERROR sont affichés en console. Les logs DEBUG sont uniquement écrits dans les fichiers.
 
 ## Licence
 
 Ce projet est sous licence propriétaire. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
 
-Tous droits réservés © 2025 Kevin
+***Tous droits réservés*** © 2025 **Kevin**
 
 ## Support
 
@@ -345,9 +371,10 @@ Pour toute question ou problème :
 
 ## Ressources Utiles
 
-- [Documentation Next.js](https://nextjs.org/docs)
-- [Documentation Socket.IO](https://socket.io/docs/v4/)
-- [Documentation NextAuth.js](https://next-auth.js.org/)
-- [Documentation MySQL](https://dev.mysql.com/doc/)
-- [Documentation TypeScript](https://www.typescriptlang.org/docs/)
-
+| Documentation | Lien |
+|---------------|------|
+| **Next.js** | [nextjs.org/docs](https://nextjs.org/docs) |
+| **Socket.IO** | [socket.io/docs/v4](https://socket.io/docs/v4/) |
+| **NextAuth.js** | [next-auth.js.org](https://next-auth.js.org/) |
+| **MySQL** | [dev.mysql.com/doc](https://dev.mysql.com/doc/) |
+| **TypeScript** | [typescriptlang.org/docs](https://www.typescriptlang.org/docs/) |
