@@ -149,7 +149,7 @@ versus/
 
 1. **Cloner le repository**
 ```bash
-git clone [text](https://github.com/vKnie/versus)
+git clone https://github.com/vKnie/versus
 cd versus
 ```
 
