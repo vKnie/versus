@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { getUserIdByName, getPool } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { validateVoteInput, recordVote, getVoteResults, determineWinner } from '@/lib/vote-service';
 
 async function handleVote(req: NextRequest) {
   const connection = await getPool().getConnection();
@@ -18,22 +19,11 @@ async function handleVote(req: NextRequest) {
 
     const { gameSessionId, duelIndex, itemVoted } = await req.json();
 
-    // ✅ SECURITY: Input validation to prevent SQL injection and invalid data
-    if (!gameSessionId || duelIndex === undefined || !itemVoted) {
-      return NextResponse.json({ error: 'Données manquantes' }, { status: 400 });
-    }
-
-    // Validate types and ranges
-    if (typeof gameSessionId !== 'number' || gameSessionId <= 0) {
-      return NextResponse.json({ error: 'ID de session invalide' }, { status: 400 });
-    }
-
-    if (typeof duelIndex !== 'number' || duelIndex < 0) {
-      return NextResponse.json({ error: 'Index de duel invalide' }, { status: 400 });
-    }
-
-    if (typeof itemVoted !== 'string' || itemVoted.length === 0 || itemVoted.length > 500) {
-      return NextResponse.json({ error: 'Item voté invalide' }, { status: 400 });
+    // ✅ REFACTORED: Use vote service for validation
+    try {
+      validateVoteInput(gameSessionId, duelIndex, itemVoted);
+    } catch (validationError: any) {
+      return NextResponse.json({ error: validationError.message }, { status: 400 });
     }
 
     const userId = await getUserIdByName(session.user.name);
@@ -61,16 +51,12 @@ async function handleVote(req: NextRequest) {
       return NextResponse.json({ error: 'Ce duel n\'est plus actif' }, { status: 400 });
     }
 
-    // Enregistrer le vote (si déjà voté, le UNIQUE constraint empêchera le doublon)
+    // ✅ REFACTORED: Use vote service to record vote
     try {
-      await connection.execute(
-        `INSERT INTO votes (game_session_id, user_id, duel_index, item_voted)
-         VALUES (?, ?, ?, ?)`,
-        [gameSessionId, userId, duelIndex, itemVoted]
-      );
+      await recordVote(connection, gameSessionId, userId, duelIndex, itemVoted);
     } catch (error: any) {
       await connection.rollback();
-      if (error.code === 'ER_DUP_ENTRY') {
+      if (error.message === 'DUPLICATE_VOTE') {
         return NextResponse.json({ error: 'Vous avez déjà voté pour ce duel' }, { status: 400 });
       }
       throw error;
@@ -94,46 +80,19 @@ async function handleVote(req: NextRequest) {
     const allVoted = voteCount[0].count === totalPlayers[0].count;
 
     if (allVoted) {
-      // Récupérer le gagnant du duel
+      // ✅ REFACTORED: Use vote service to get results and determine winner
       const [voteResults]: any = await connection.execute(
         'SELECT item_voted, COUNT(*) as votes FROM votes WHERE game_session_id = ? AND duel_index = ? GROUP BY item_voted ORDER BY votes DESC',
         [gameSessionId, duelIndex]
       );
 
-      let winner: string;
-      let isTie = false;
-      let tieBreaker: { winner: string; item1: string; item2: string; coinFlip: 'heads' | 'tails' } | null = null;
+      const { winner, tieBreaker } = determineWinner(voteResults, duelIndex);
+      const isTie = tieBreaker !== null;
 
-      // Vérifier s'il y a égalité
-      if (voteResults.length >= 2 && voteResults[0].votes === voteResults[1].votes) {
-        // ÉGALITÉ ! Pile ou face
-        isTie = true;
-        const item1 = voteResults[0].item_voted;
-        const item2 = voteResults[1].item_voted;
-
-        // Pile ou face aléatoire (50/50)
-        const coinFlip = Math.random() < 0.5 ? 'heads' : 'tails';
-        winner = coinFlip === 'heads' ? item1 : item2;
-
-        tieBreaker = {
-          winner,
-          item1,
-          item2,
-          coinFlip
-        };
-
-        // Enregistrer le tie-breaker dans les données du tournoi pour l'affichage
+      // Enregistrer le tie-breaker dans les données du tournoi pour l'affichage
+      if (tieBreaker) {
         if (!tournamentData.tieBreakers) tournamentData.tieBreakers = [];
-        tournamentData.tieBreakers.push({
-          duelIndex,
-          ...tieBreaker,
-          votes: voteResults[0].votes
-        });
-
-        logger.game.tieBreaker(gameSessionId, duelIndex, item1, item2, winner);
-      } else {
-        // Pas d'égalité, le plus de votes gagne
-        winner = voteResults[0].item_voted;
+        tournamentData.tieBreakers.push(tieBreaker);
       }
 
       // Mettre à jour les données du tournoi

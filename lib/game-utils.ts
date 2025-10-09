@@ -2,6 +2,7 @@ import { query } from '@/lib/db';
 import type { TournamentData, GameSession } from '@/types/game';
 import fs from 'fs/promises';
 import path from 'path';
+import { convertDbRows } from '@/lib/case-converter';
 
 export async function saveGameHistory(
   gameSessionId: number,
@@ -15,14 +16,9 @@ export async function saveGameHistory(
       [gameSessionId]
     );
 
+    // ✅ REFACTORED: Use case converter for consistent naming
     // Récupérer tous les votes avec les détails
-    const allVotes = await query<{
-      duel_index: number;
-      item_voted: string;
-      voter_name: string;
-      profile_picture_url: string | null;
-      created_at: string;
-    }>(
+    const allVotesRaw = await query(
       `SELECT v.duel_index, v.item_voted, u.name as voter_name, u.profile_picture_url, v.created_at
        FROM votes v
        JOIN users u ON v.user_id = u.id
@@ -31,8 +27,10 @@ export async function saveGameHistory(
       [gameSessionId]
     );
 
+    const allVotes = convertDbRows(allVotesRaw);
+
     // Récupérer tous les membres du salon
-    const members = await query<{ name: string; joined_at: string }>(
+    const membersRaw = await query(
       `SELECT u.name, rm.joined_at
        FROM room_members rm
        JOIN users u ON rm.user_id = u.id
@@ -40,12 +38,14 @@ export async function saveGameHistory(
       [roomId]
     );
 
+    const members = convertDbRows(membersRaw);
+
     // Organiser les votes par duel
     const duelResults = tournamentData.duels.map((duel, index) => {
-      const duelVotes = allVotes.filter((v) => v.duel_index === index);
+      const duelVotes = allVotes.filter((v: any) => v.duelIndex === index);
 
-      const item1Votes = duelVotes.filter((v) => v.item_voted === duel.item1.name);
-      const item2Votes = duelVotes.filter((v) => v.item_voted === duel.item2.name);
+      const item1Votes = duelVotes.filter((v: any) => v.itemVoted === duel.item1.name);
+      const item2Votes = duelVotes.filter((v: any) => v.itemVoted === duel.item2.name);
 
       const winner = item1Votes.length > item2Votes.length ? duel.item1.name : duel.item2.name;
 
@@ -54,8 +54,8 @@ export async function saveGameHistory(
         round: duel.round,
         item1: duel.item1,
         item2: duel.item2,
-        item1Votes: item1Votes.map((v) => ({ voter: v.voter_name, votedAt: v.created_at, profilePictureUrl: v.profile_picture_url })),
-        item2Votes: item2Votes.map((v) => ({ voter: v.voter_name, votedAt: v.created_at, profilePictureUrl: v.profile_picture_url })),
+        item1Votes: item1Votes.map((v: any) => ({ voter: v.voterName, votedAt: v.createdAt, profilePictureUrl: v.profilePictureUrl })),
+        item2Votes: item2Votes.map((v: any) => ({ voter: v.voterName, votedAt: v.createdAt, profilePictureUrl: v.profilePictureUrl })),
         item1Count: item1Votes.length,
         item2Count: item2Votes.length,
         winner
@@ -69,7 +69,7 @@ export async function saveGameHistory(
       winner: tournamentData.winners[0],
       totalRounds: tournamentData.totalRounds,
       allParticipants: tournamentData.allItems,
-      members: members.map((m) => ({ name: m.name, joinedAt: m.joined_at })),
+      members: members.map((m: any) => ({ name: m.name, joinedAt: m.joinedAt })),
       duelResults,
       tieBreakers: tournamentData.tieBreakers || [],
       startedAt: gameSession[0].created_at,

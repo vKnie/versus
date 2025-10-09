@@ -12,6 +12,8 @@ import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
 import type { Server as HTTPServer } from 'http';
 import type { Server as HTTPSServer } from 'https';
+import { convertDbRow, convertDbRows } from './lib/case-converter';
+import { getVoteDetails } from './lib/vote-service';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
@@ -142,14 +144,10 @@ app.prepare().then(async () => {
            ORDER BY s.created_at DESC`
         );
 
+        // ✅ REFACTORED: Use case converter for consistent naming
         io.emit('online_users_update', {
           count: onlineUsers.length,
-          users: (onlineUsers as OnlineUser[]).map(u => ({
-            name: u.name,
-            in_game: u.in_game,
-            profile_picture_url: u.profile_picture_url,
-            connected_since: u.connected_since,
-          })),
+          users: convertDbRows(onlineUsers),
         });
 
         logger.socket.eventEmitted('online_users_update', undefined, onlineUsers.length);
@@ -178,14 +176,10 @@ app.prepare().then(async () => {
           [roomId]
         );
 
+        // ✅ REFACTORED: Use case converter for consistent naming
         io.to(roomName).emit('room_members_update', {
           roomId,
-          members: (members as RoomMember[]).map((m) => ({
-            id: m.id,
-            name: m.name,
-            profilePictureUrl: m.profile_picture_url,
-            inGame: m.in_game,
-          })),
+          members: convertDbRows(members),
         });
       } catch (error) {
         console.error('Error fetching room members:', error);
@@ -218,38 +212,27 @@ app.prepare().then(async () => {
         const currentDuelIndex = session.current_duel_index;
         const tournamentData = JSON.parse(session.duels_data);
 
-        const [votes] = await pool.execute<any[]>(
-          `SELECT v.item_voted, u.name, u.profile_picture_url, v.user_id FROM votes v
-           JOIN users u ON v.user_id = u.id
-           WHERE v.game_session_id = ? AND v.duel_index = ?`,
-          [data.gameSessionId, currentDuelIndex]
-        );
+        // ✅ REFACTORED: Use vote service to get vote details
+        const voteDetails = await getVoteDetails(data.gameSessionId, currentDuelIndex);
 
         const [totalPlayers] = await pool.execute<any[]>(
           `SELECT COUNT(*) as count FROM room_members WHERE room_id = ?`,
           [data.roomId]
         );
 
-        const allVoted = votes.length === totalPlayers[0].count;
+        const allVoted = voteDetails.length === totalPlayers[0].count;
         const tieBreakers = tournamentData.tieBreakers || [];
         const tieBreaker = tieBreakers.find((tb: any) => tb.duelIndex === currentDuelIndex);
 
-        const voteDetails = (votes as Vote[]).map(v => ({
-          userId: v.user_id,
-          name: v.name,
-          profilePictureUrl: v.profile_picture_url,
-          itemVoted: v.item_voted,
-        }));
-
         io.to(roomName).emit('vote_update', {
-          votes: votes.length,
+          votes: voteDetails.length,
           totalPlayers: totalPlayers[0].count,
           allVoted,
           voteDetails,
           tieBreaker: tieBreaker || null,
         });
 
-        logger.socket.eventEmitted('vote_update', roomName, votes.length);
+        logger.socket.eventEmitted('vote_update', roomName, voteDetails.length);
 
         return {
           allVoted,
@@ -583,15 +566,9 @@ app.prepare().then(async () => {
            JOIN users u ON r.created_by = u.id`
         );
 
+        // ✅ REFACTORED: Use case converter for consistent naming
         io.emit('rooms_update', {
-          rooms: (rooms as Room[]).map((r) => ({
-            id: r.id,
-            name: r.name,
-            createdBy: r.created_by,
-            creatorName: r.creator_name,
-            configId: r.config_id,
-            memberCount: r.member_count,
-          })),
+          rooms: convertDbRows(rooms),
         });
 
         console.log(`🏠 Rooms update broadcasted (${rooms.length} rooms)`);
@@ -613,17 +590,10 @@ app.prepare().then(async () => {
             [roomId]
           );
 
-          const formattedMembers = (members as any[]).map((m) => ({
-            id: m.id,
-            name: m.name,
-            profile_picture_url: m.profile_picture_url,
-            joined_at: m.joined_at,
-            in_game: m.in_game,
-          }));
-
+          // ✅ REFACTORED: Use case converter for consistent naming
           io.emit('room_members_update', {
             roomId,
-            members: formattedMembers,
+            members: convertDbRows(members),
           });
         };
 

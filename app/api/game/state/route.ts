@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { query, getUserIdByName } from '@/lib/db';
+import { convertDbRow } from '@/lib/case-converter';
+import { getVoteDetails } from '@/lib/vote-service';
 
 export async function GET(req: NextRequest) {
   try {
@@ -144,17 +146,11 @@ export async function GET(req: NextRequest) {
       profilePictureUrl: roomInfo[0].profile_picture_url
     } : null;
 
-    // Récupérer les votes pour le duel actuel avec photos de profil
-    const votes: any = await query(
-      `SELECT v.user_id, u.name, u.profile_picture_url, v.item_voted
-       FROM votes v
-       JOIN users u ON v.user_id = u.id
-       WHERE v.game_session_id = ? AND v.duel_index = ?`,
-      [session_data.id, session_data.current_duel_index]
-    );
+    // ✅ REFACTORED: Use vote service to get vote details
+    const voteDetails = await getVoteDetails(session_data.id, session_data.current_duel_index);
 
     // Vérifier si l'utilisateur actuel a déjà voté
-    const userVote = votes.find((v: any) => v.user_id === userId);
+    const userVote = voteDetails.find((v) => v.userId === userId);
 
     // Vérifier s'il y a un tie-breaker pour ce duel
     const tieBreakers = tournamentData.tieBreakers || [];
@@ -172,26 +168,24 @@ export async function GET(req: NextRequest) {
       userHasContinued = (continueCount[0].user_clicked || 0) > 0;
     }
 
+    // ✅ REFACTORED: Use case converter for consistent naming
+    const sessionDataCamel = convertDbRow(session_data);
+
     return NextResponse.json({
-      gameSessionId: session_data.id,
-      status: session_data.status,
-      currentDuelIndex: session_data.current_duel_index,
+      gameSessionId: sessionDataCamel.id,
+      status: sessionDataCamel.status,
+      currentDuelIndex: sessionDataCamel.currentDuelIndex,
       totalDuels: duels.length,
       currentDuel: enrichedCurrentDuel,
       currentRound,
       totalRounds: tournamentData.totalRounds,
-      votes: votes.length,
-      voteDetails: votes.map((v: any) => ({
-        userId: v.user_id,
-        name: v.name,
-        profilePictureUrl: v.profile_picture_url,
-        itemVoted: v.item_voted
-      })),
+      votes: voteDetails.length,
+      voteDetails,
       totalPlayers: totalPlayers[0].count,
       hasVoted: !!userVote,
-      userVote: userVote?.item_voted || null,
-      videoStartTime: session_data.video_start_time,
-      allVoted: votes.length === totalPlayers[0].count,
+      userVote: userVote?.itemVoted || null,
+      videoStartTime: sessionDataCamel.videoStartTime,
+      allVoted: voteDetails.length === totalPlayers[0].count,
       tieBreaker: currentTieBreaker || null,
       continueClicks,
       userHasContinued,
