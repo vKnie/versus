@@ -1,8 +1,5 @@
-import { config } from 'dotenv';
-import { resolve } from 'path';
-
-// Load environment variables first
-config({ path: resolve(process.cwd(), '.env.local') });
+// Load environment variables FIRST before any other imports
+import './dotenv-config';
 
 import { createServer as createHttpServer } from 'http';
 import { createServer as createHttpsServer } from 'https';
