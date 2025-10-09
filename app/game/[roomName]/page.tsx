@@ -3,10 +3,12 @@
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
-import Avatar from '@/components/Avatar';
-import GameMasterMenu from '@/components/GameMasterMenu';
 import { useGameRoom } from '@/lib/useSocket';
-import { Volume2, Check, SkipBack, Pause, Play, SkipForward, AlertTriangle, Trophy } from 'lucide-react';
+import GameHeader from '@/components/game/GameHeader';
+import DuelItem from '@/components/game/DuelItem';
+import VoteConfirmDialog from '@/components/game/VoteConfirmDialog';
+import TieBreakerModal from '@/components/game/TieBreakerModal';
+import ResultsPanel from '@/components/game/ResultsPanel';
 
 interface VoteDetail {
   userId: number;
@@ -858,645 +860,97 @@ export default function GamePage() {
       `}</style>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-200 mb-4">{decodeURIComponent(roomName)}</h1>
-
-          <div className="flex flex-wrap items-center gap-3 justify-between">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Badge Duel */}
-              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2">
-                <span className="text-sm text-zinc-400">Duel</span>
-                <span className="ml-2 text-sm font-semibold text-zinc-200">
-                  {gameState.currentDuelIndex + 1} / {gameState.totalDuels}
-                </span>
-              </div>
-
-              {/* Badge Maître du jeu */}
-              {gameState.gameMaster && (
-                <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-2">
-                  <span className="text-sm text-zinc-400">Maître :</span>
-                  <div className="flex items-center gap-1.5">
-                    <Avatar src={gameState.gameMaster.profilePictureUrl} name={gameState.gameMaster.name} size="xs" />
-                    <span className="text-sm font-medium text-zinc-200">{gameState.gameMaster.name}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Badge Volume */}
-              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 flex items-center gap-3 min-w-[220px]">
-                <Volume2 className="w-4 h-4 text-zinc-400" />
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={globalVolume}
-                  onChange={(e) => handleGlobalVolumeChange(parseInt(e.target.value))}
-                  className="flex-1 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                  title="Volume global"
-                />
-                <span className="text-xs text-zinc-400 w-9 text-right">{globalVolume}%</span>
-              </div>
-
-              {/* Menu de gestion pour le maître du jeu */}
-              {gameState.isGameMaster && roomId && gameState.gameSessionId && (
-                <GameMasterMenu
-                  roomId={roomId}
-                  gameSessionId={gameState.gameSessionId}
-                  onExcludePlayer={handleExcludePlayer}
-                  currentUserName={session?.user?.name || ''}
-                />
-              )}
-            </div>
-
-            {/* Badge Votes - à droite */}
-            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-2 relative group">
-              <span className="text-sm text-zinc-400">Votes :</span>
-              <span className="ml-2 text-sm font-semibold text-zinc-200">
-                {gameState.votes} / {gameState.totalPlayers}
-              </span>
-              {gameState.allVoted && (
-                <Check className="ml-2 w-3.5 h-3.5 text-emerald-400 inline" />
-              )}
-
-              {/* Tooltip qui affiche qui a voté - à gauche du badge */}
-              <div className="absolute hidden group-hover:block top-0 right-full mr-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-50">
-                {gameState.voteDetails && gameState.voteDetails.length > 0 ? (
-                  <>
-                    <p className="text-xs font-semibold text-zinc-300 mb-2">Ont voté :</p>
-                    <div className="space-y-1">
-                      {gameState.voteDetails.map((voter) => (
-                        <div key={voter.userId} className="flex items-center gap-1.5">
-                          <Avatar src={voter.profilePictureUrl} name={voter.name} size="xs" />
-                          <span className="text-xs text-zinc-300">{voter.name}</span>
-                          <Check className="ml-auto w-3 h-3 text-emerald-400" />
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-xs text-zinc-400 italic">Aucun vote pour le moment</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <GameHeader
+          roomName={roomName}
+          currentDuelIndex={gameState.currentDuelIndex}
+          totalDuels={gameState.totalDuels}
+          gameMaster={gameState.gameMaster}
+          globalVolume={globalVolume}
+          onGlobalVolumeChange={handleGlobalVolumeChange}
+          isGameMaster={gameState.isGameMaster}
+          roomId={roomId}
+          gameSessionId={gameState.gameSessionId}
+          onExcludePlayer={handleExcludePlayer}
+          currentUserName={session?.user?.name || ''}
+          votes={gameState.votes}
+          totalPlayers={gameState.totalPlayers}
+          allVoted={gameState.allVoted}
+          voteDetails={gameState.voteDetails}
+        />
 
         {/* Duels */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Item 1 */}
-          <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl overflow-hidden">
-            <div className="aspect-video bg-black relative">
-              <div id="player1" className="w-full h-full"></div>
-              {/* Couche transparente pour bloquer les clics sur la vidéo */}
-              <div className="absolute inset-0 pointer-events-auto bg-transparent"></div>
-            </div>
-
-            {/* Contrôles vidéo pour le maître du jeu */}
-            {gameState.isGameMaster && (
-              <div className="bg-zinc-800/50 p-3 border-b border-zinc-700/50">
-                <div className="flex flex-wrap gap-2 items-center justify-center">
-                  <button
-                    onClick={() => {
-                      const player = player1Ref.current;
-                      if (player && player.getCurrentTime && player.seekTo) {
-                        const currentTime = player.getCurrentTime();
-                        const newTime = Math.max(0, currentTime - 10);
-                        player.seekTo(newTime, true);
-                        socket?.emit('video_seek', { roomId, videoIndex: 1, timestamp: newTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Reculer de 10s"
-                  >
-                    <SkipBack className="w-3.5 h-3.5" />
-                    <span>-10s</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const player = player1Ref.current;
-                      if (player && player.getCurrentTime && player.pauseVideo) {
-                        const currentTime = player.getCurrentTime();
-                        player.pauseVideo();
-                        socket?.emit('video_pause', { roomId, videoIndex: 1, timestamp: currentTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Pause"
-                  >
-                    <Pause className="w-3.5 h-3.5" />
-                    <span>Pause</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const player = player1Ref.current;
-                      if (player && player.getCurrentTime && player.playVideo) {
-                        const currentTime = player.getCurrentTime();
-                        player.playVideo();
-                        socket?.emit('video_play', { roomId, videoIndex: 1, timestamp: currentTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Lecture"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Play</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const player = player1Ref.current;
-                      if (player && player.getCurrentTime && player.seekTo) {
-                        const currentTime = player.getCurrentTime();
-                        const newTime = currentTime + 10;
-                        player.seekTo(newTime, true);
-                        socket?.emit('video_seek', { roomId, videoIndex: 1, timestamp: newTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Avancer de 10s"
-                  >
-                    <SkipForward className="w-3.5 h-3.5" />
-                    <span>+10s</span>
-                  </button>
-                  <select
-                    onChange={(e) => {
-                      const player = player1Ref.current;
-                      const rate = parseFloat(e.target.value);
-                      if (player && player.setPlaybackRate) {
-                        player.setPlaybackRate(rate);
-                        socket?.emit('video_rate_change', { roomId, videoIndex: 1, playbackRate: rate });
-                      }
-                    }}
-                    className="px-2 py-1.5 bg-zinc-700 text-white text-xs rounded cursor-pointer"
-                    defaultValue="1"
-                  >
-                    <option value="0.5">0.5x</option>
-                    <option value="1">1x</option>
-                    <option value="1.25">1.25x</option>
-                    <option value="1.5">1.5x</option>
-                    <option value="2">2x</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            <div className="p-6">
-              <h2 className="text-xl font-semibold text-zinc-200 mb-2">
-                {gameState.currentDuel.item1.name}
-              </h2>
-              <div className="mb-4">
-                <p className="text-xs text-zinc-400 mb-2">Proposé par :</p>
-                <div className="flex flex-wrap gap-2">
-                  {gameState.currentDuel.item1.proposedBy.map((person, i) => {
-                    const personName = typeof person === 'string' ? person : person.name;
-                    const personPic = typeof person === 'string' ? null : person.profilePictureUrl;
-                    return (
-                      <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
-                        <Avatar src={personPic} name={personName} size="xs" />
-                        <span className="text-xs text-zinc-300">{personName}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                onClick={() => handleVoteClick(gameState.currentDuel.item1.name)}
-                disabled={gameState.hasVoted || voting}
-                className={`w-full px-6 py-3 font-medium rounded-lg transition-colors cursor-pointer ${
-                  gameState.userVote === gameState.currentDuel.item1.name
-                    ? 'bg-emerald-600 text-white'
-                    : gameState.hasVoted
-                    ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                }`}
-              >
-                {gameState.userVote === gameState.currentDuel.item1.name
-                  ? (<span className="flex items-center gap-1"><Check className="w-3 h-3" /> Voté</span>)
-                  : gameState.hasVoted
-                  ? 'Déjà voté'
-                  : 'Voter pour cet item'}
-              </button>
-            </div>
-          </div>
+          <DuelItem
+            playerId="player1"
+            playerRef={player1Ref}
+            itemName={gameState.currentDuel.item1.name}
+            proposedBy={gameState.currentDuel.item1.proposedBy}
+            hasVoted={gameState.hasVoted}
+            voting={voting}
+            userVote={gameState.userVote}
+            onVoteClick={handleVoteClick}
+            isGameMaster={gameState.isGameMaster}
+            roomId={roomId}
+            videoIndex={1}
+            socket={socket}
+          />
 
           {/* Item 2 */}
-          <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl overflow-hidden">
-            <div className="aspect-video bg-black relative">
-              <div id="player2" className="w-full h-full"></div>
-              {/* Couche transparente pour bloquer les clics sur la vidéo */}
-              <div className="absolute inset-0 pointer-events-auto bg-transparent"></div>
-            </div>
-
-            {/* Contrôles vidéo pour le maître du jeu */}
-            {gameState.isGameMaster && (
-              <div className="bg-zinc-800/50 p-3 border-b border-zinc-700/50">
-                <div className="flex flex-wrap gap-2 items-center justify-center">
-                  <button
-                    onClick={() => {
-                      const player = player2Ref.current;
-                      if (player && player.getCurrentTime && player.seekTo) {
-                        const currentTime = player.getCurrentTime();
-                        const newTime = Math.max(0, currentTime - 10);
-                        player.seekTo(newTime, true);
-                        socket?.emit('video_seek', { roomId, videoIndex: 2, timestamp: newTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Reculer de 10s"
-                  >
-                    <SkipBack className="w-3.5 h-3.5" />
-                    <span>-10s</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const player = player2Ref.current;
-                      if (player && player.getCurrentTime && player.pauseVideo) {
-                        const currentTime = player.getCurrentTime();
-                        player.pauseVideo();
-                        socket?.emit('video_pause', { roomId, videoIndex: 2, timestamp: currentTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Pause"
-                  >
-                    <Pause className="w-3.5 h-3.5" />
-                    <span>Pause</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const player = player2Ref.current;
-                      if (player && player.getCurrentTime && player.playVideo) {
-                        const currentTime = player.getCurrentTime();
-                        player.playVideo();
-                        socket?.emit('video_play', { roomId, videoIndex: 2, timestamp: currentTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Lecture"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Play</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const player = player2Ref.current;
-                      if (player && player.getCurrentTime && player.seekTo) {
-                        const currentTime = player.getCurrentTime();
-                        const newTime = currentTime + 10;
-                        player.seekTo(newTime, true);
-                        socket?.emit('video_seek', { roomId, videoIndex: 2, timestamp: newTime });
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Avancer de 10s"
-                  >
-                    <SkipForward className="w-3.5 h-3.5" />
-                    <span>+10s</span>
-                  </button>
-                  <select
-                    onChange={(e) => {
-                      const player = player2Ref.current;
-                      const rate = parseFloat(e.target.value);
-                      if (player && player.setPlaybackRate) {
-                        player.setPlaybackRate(rate);
-                        socket?.emit('video_rate_change', { roomId, videoIndex: 2, playbackRate: rate });
-                      }
-                    }}
-                    className="px-2 py-1.5 bg-zinc-700 text-white text-xs rounded cursor-pointer"
-                    defaultValue="1"
-                  >
-                    <option value="0.5">0.5x</option>
-                    <option value="1">1x</option>
-                    <option value="1.25">1.25x</option>
-                    <option value="1.5">1.5x</option>
-                    <option value="2">2x</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            <div className="p-6">
-              <h2 className="text-xl font-semibold text-zinc-200 mb-2">
-                {gameState.currentDuel.item2.name}
-              </h2>
-              <div className="mb-4">
-                <p className="text-xs text-zinc-400 mb-2">Proposé par :</p>
-                <div className="flex flex-wrap gap-2">
-                  {gameState.currentDuel.item2.proposedBy.map((person, i) => {
-                    const personName = typeof person === 'string' ? person : person.name;
-                    const personPic = typeof person === 'string' ? null : person.profilePictureUrl;
-                    return (
-                      <div key={i} className="flex items-center gap-1 bg-zinc-800 rounded-full pr-2 py-0.5">
-                        <Avatar src={personPic} name={personName} size="xs" />
-                        <span className="text-xs text-zinc-300">{personName}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                onClick={() => handleVoteClick(gameState.currentDuel.item2.name)}
-                disabled={gameState.hasVoted || voting}
-                className={`w-full px-6 py-3 font-medium rounded-lg transition-colors cursor-pointer ${
-                  gameState.userVote === gameState.currentDuel.item2.name
-                    ? 'bg-emerald-600 text-white'
-                    : gameState.hasVoted
-                    ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                }`}
-              >
-                {gameState.userVote === gameState.currentDuel.item2.name
-                  ? (<span className="flex items-center gap-1"><Check className="w-3 h-3" /> Voté</span>)
-                  : gameState.hasVoted
-                  ? 'Déjà voté'
-                  : 'Voter pour cet item'}
-              </button>
-            </div>
-          </div>
+          <DuelItem
+            playerId="player2"
+            playerRef={player2Ref}
+            itemName={gameState.currentDuel.item2.name}
+            proposedBy={gameState.currentDuel.item2.proposedBy}
+            hasVoted={gameState.hasVoted}
+            voting={voting}
+            userVote={gameState.userVote}
+            onVoteClick={handleVoteClick}
+            isGameMaster={gameState.isGameMaster}
+            roomId={roomId}
+            videoIndex={2}
+            socket={socket}
+          />
         </div>
 
         {/* Dialog de confirmation de vote */}
-        {showConfirmDialog && pendingVote && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md w-full shadow-2xl">
-              <h3 className="text-xl font-bold text-zinc-200 mb-4">Confirmer votre vote</h3>
-              <p className="text-zinc-400 mb-6">
-                Êtes-vous sûr de vouloir voter pour :<br />
-                <span className="text-purple-400 font-semibold text-lg">{pendingVote}</span> ?
-              </p>
-              <p className="text-xs text-zinc-500 mb-6">
-                <span className="flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Vous ne pourrez pas changer votre vote une fois confirmé.</span>
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={cancelVote}
-                  className="flex-1 px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-medium rounded-lg transition-colors cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={confirmVote}
-                  disabled={voting}
-                  className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors cursor-pointer"
-                >
-                  {voting ? 'Envoi...' : 'Confirmer le vote'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <VoteConfirmDialog
+          show={showConfirmDialog}
+          pendingVote={pendingVote}
+          voting={voting}
+          onConfirm={confirmVote}
+          onCancel={cancelVote}
+        />
 
         {/* Animation de Pile ou Face */}
-        {showCoinFlip && gameState?.tieBreaker && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-4 sm:p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
-              <div className="mb-4 sm:mb-6">
-                <h3 className="text-xl sm:text-2xl font-bold text-zinc-200 mb-1">
-                  Égalité
-                </h3>
-                <p className="text-zinc-400 text-xs sm:text-sm">
-                  Duel {gameState.currentDuelIndex + 1} - Égalité {gameState.tieBreaker.votes}-{gameState.tieBreaker.votes}
-                </p>
-              </div>
-
-              {/* Les deux items en compétition */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                <div className={`bg-zinc-800/50 border rounded-lg p-4 transition-all ${
-                  !coinFlipping && gameState.tieBreaker.winner === gameState.tieBreaker.item1
-                    ? 'border-emerald-500 bg-emerald-500/10'
-                    : 'border-zinc-700/50'
-                }`}>
-                  <p className="text-sm font-semibold text-zinc-200 mb-3 line-clamp-2">
-                    {gameState.tieBreaker.item1}
-                  </p>
-                  <div className="space-y-2">
-                    <p className="text-xs text-zinc-400">
-                      {gameState.tieBreaker.votes} {gameState.tieBreaker.votes > 1 ? 'votes' : 'vote'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {gameState.voteDetails
-                        .filter(v => v.itemVoted === gameState.tieBreaker?.item1)
-                        .map((voter) => (
-                          <div key={voter.userId} className="flex items-center gap-1 bg-zinc-700/50 rounded-full pr-2 py-0.5">
-                            <Avatar src={voter.profilePictureUrl} name={voter.name} size="xs" />
-                            <span className="text-xs text-zinc-300">{voter.name}</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                  {!coinFlipping && gameState.tieBreaker.winner === gameState.tieBreaker.item1 && (
-                    <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
-                    </div>
-                  )}
-                </div>
-                <div className={`bg-zinc-800/50 border rounded-lg p-4 transition-all ${
-                  !coinFlipping && gameState.tieBreaker.winner === gameState.tieBreaker.item2
-                    ? 'border-emerald-500 bg-emerald-500/10'
-                    : 'border-zinc-700/50'
-                }`}>
-                  <p className="text-sm font-semibold text-zinc-200 mb-3 line-clamp-2">
-                    {gameState.tieBreaker.item2}
-                  </p>
-                  <div className="space-y-2">
-                    <p className="text-xs text-zinc-400">
-                      {gameState.tieBreaker.votes} {gameState.tieBreaker.votes > 1 ? 'votes' : 'vote'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {gameState.voteDetails
-                        .filter(v => v.itemVoted === gameState.tieBreaker?.item2)
-                        .map((voter) => (
-                          <div key={voter.userId} className="flex items-center gap-1 bg-zinc-700/50 rounded-full pr-2 py-0.5">
-                            <Avatar src={voter.profilePictureUrl} name={voter.name} size="xs" />
-                            <span className="text-xs text-zinc-300">{voter.name}</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                  {!coinFlipping && gameState.tieBreaker.winner === gameState.tieBreaker.item2 && (
-                    <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Animation de la pièce */}
-              <div className="mb-4 sm:mb-6 flex justify-center items-center gap-4">
-                <div
-                  className={`text-6xl sm:text-8xl ${coinFlipping ? 'animate-spin' : ''}`}
-                  style={{
-                    animationDuration: coinFlipping ? '0.3s' : '1s',
-                  }}
-                >
-                  🪙
-                </div>
-                {!coinFlipping && (
-                  <div className="text-center">
-                    <p className="text-2xl sm:text-4xl font-bold text-zinc-200">
-                      {gameState.tieBreaker.coinFlip === 'heads' ? 'Pile' : 'Face'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {!coinFlipping && (
-                <div className="space-y-3 sm:space-y-4">
-                  {showContinueButton && (
-                    <div className="mt-4 sm:mt-6">
-                      <button
-                        onClick={handleContinueClick}
-                        disabled={!continueButtonEnabled || clickingContinue || gameState.userHasContinued}
-                        className={`w-full px-4 sm:px-6 py-2.5 sm:py-3 font-medium rounded-lg transition-all text-sm sm:text-base cursor-pointer ${
-                          gameState.userHasContinued
-                            ? 'bg-emerald-600 text-white cursor-default'
-                            : continueButtonEnabled
-                            ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                            : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {gameState.userHasContinued
-                          ? `✓ En attente (${gameState.continueClicks || 0}/${gameState.totalPlayers})`
-                          : clickingContinue
-                          ? 'Chargement...'
-                          : continueButtonEnabled
-                          ? `Continuer (${gameState.continueClicks || 0}/${gameState.totalPlayers})`
-                          : 'Continuer...'}
-                      </button>
-                      <p className="text-xs text-zinc-500 mt-2 text-center">
-                        Tous les joueurs doivent cliquer pour passer au duel suivant
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {coinFlipping && (
-                <div className="text-center">
-                  <p className="text-zinc-300 text-sm sm:text-base font-medium">
-                    Tirage au sort en cours...
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <TieBreakerModal
+          show={showCoinFlip}
+          tieBreaker={gameState?.tieBreaker || null}
+          voteDetails={gameState?.voteDetails || []}
+          currentDuelIndex={gameState?.currentDuelIndex || 0}
+          coinFlipping={coinFlipping}
+          showContinueButton={showContinueButton}
+          continueButtonEnabled={continueButtonEnabled}
+          clickingContinue={clickingContinue}
+          userHasContinued={gameState?.userHasContinued}
+          continueClicks={gameState?.continueClicks}
+          totalPlayers={gameState?.totalPlayers || 0}
+          onContinueClick={handleContinueClick}
+        />
 
         {/* Panneau récapitulatif normal (sans tiebreaker) */}
-        {showResultsPanel && gameState && !gameState.tieBreaker && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800/60 rounded-xl p-4 sm:p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
-              <div className="mb-4 sm:mb-6">
-                <h3 className="text-xl sm:text-2xl font-bold text-zinc-200 mb-1">
-                  Résultats du duel {gameState.currentDuelIndex + 1}
-                </h3>
-                <p className="text-zinc-400 text-xs sm:text-sm">
-                  Tous les joueurs ont voté
-                </p>
-              </div>
-
-              {/* Les deux items en compétition */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                {/* Item 1 */}
-                <div className={`bg-zinc-800/50 border rounded-lg p-4 transition-all ${
-                  gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length >
-                  gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length
-                    ? 'border-emerald-500 bg-emerald-500/10'
-                    : 'border-zinc-700/50'
-                }`}>
-                  <p className="text-sm font-semibold text-zinc-200 mb-3 line-clamp-2">
-                    {gameState.currentDuel.item1.name}
-                  </p>
-                  <div className="space-y-2">
-                    <p className="text-xs text-zinc-400">
-                      {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length}{' '}
-                      {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length > 1 ? 'votes' : 'vote'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {gameState.voteDetails
-                        .filter(v => v.itemVoted === gameState.currentDuel.item1.name)
-                        .map((voter) => (
-                          <div key={voter.userId} className="flex items-center gap-1 bg-zinc-700/50 rounded-full pr-2 py-0.5">
-                            <Avatar src={voter.profilePictureUrl} name={voter.name} size="xs" />
-                            <span className="text-xs text-zinc-300">{voter.name}</span>
-                          </div>
-                        ))}
-                      {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length === 0 && (
-                        <span className="text-xs text-zinc-500 italic">Aucun vote</span>
-                      )}
-                    </div>
-                  </div>
-                  {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length >
-                   gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length && (
-                    <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Item 2 */}
-                <div className={`bg-zinc-800/50 border rounded-lg p-4 transition-all ${
-                  gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length >
-                  gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length
-                    ? 'border-emerald-500 bg-emerald-500/10'
-                    : 'border-zinc-700/50'
-                }`}>
-                  <p className="text-sm font-semibold text-zinc-200 mb-3 line-clamp-2">
-                    {gameState.currentDuel.item2.name}
-                  </p>
-                  <div className="space-y-2">
-                    <p className="text-xs text-zinc-400">
-                      {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length}{' '}
-                      {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length > 1 ? 'votes' : 'vote'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {gameState.voteDetails
-                        .filter(v => v.itemVoted === gameState.currentDuel.item2.name)
-                        .map((voter) => (
-                          <div key={voter.userId} className="flex items-center gap-1 bg-zinc-700/50 rounded-full pr-2 py-0.5">
-                            <Avatar src={voter.profilePictureUrl} name={voter.name} size="xs" />
-                            <span className="text-xs text-zinc-300">{voter.name}</span>
-                          </div>
-                        ))}
-                      {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length === 0 && (
-                        <span className="text-xs text-zinc-500 italic">Aucun vote</span>
-                      )}
-                    </div>
-                  </div>
-                  {gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item2.name).length >
-                   gameState.voteDetails.filter(v => v.itemVoted === gameState.currentDuel.item1.name).length && (
-                    <div className="mt-3">
-                      <span className="text-xs font-medium text-emerald-400 flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Gagnant</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Bouton Continuer */}
-              <div className="text-center">
-                <button
-                  onClick={() => handleNormalContinue()}
-                  disabled={!continueButtonEnabled || clickingContinue}
-                  className={`px-6 py-3 font-medium rounded-lg transition-all cursor-pointer ${
-                    continueButtonEnabled
-                      ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                      : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
-                  }`}
-                >
-                  {clickingContinue
-                    ? 'Chargement...'
-                    : continueButtonEnabled
-                    ? `Continuer (${normalContinueClicks}/${gameState.totalPlayers})`
-                    : 'Continuer...'}
-                </button>
-                <p className="text-xs text-zinc-500 mt-2">
-                  Tous les joueurs doivent cliquer pour passer au duel suivant
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        <ResultsPanel
+          show={showResultsPanel && !!gameState && !gameState.tieBreaker}
+          currentDuelIndex={gameState?.currentDuelIndex || 0}
+          item1={gameState?.currentDuel?.item1 || { name: '', youtubeLink: '', proposedBy: [] }}
+          item2={gameState?.currentDuel?.item2 || { name: '', youtubeLink: '', proposedBy: [] }}
+          voteDetails={gameState?.voteDetails || []}
+          totalPlayers={gameState?.totalPlayers || 0}
+          continueButtonEnabled={continueButtonEnabled}
+          clickingContinue={clickingContinue}
+          normalContinueClicks={normalContinueClicks}
+          onContinueClick={handleNormalContinue}
+        />
       </div>
     </div>
   );
