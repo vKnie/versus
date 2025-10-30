@@ -267,7 +267,7 @@ export default function ConfigurationPage() {
           </button>
           {!showCreateForm && (userRoles.includes('config_creator') || userRoles.includes('admin')) && (
             <div className="flex gap-3">
-              <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer">
+              <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-2">
                 <input
                   type="file"
                   accept=".json"
