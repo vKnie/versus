@@ -3,8 +3,9 @@ import './dotenv-config';
 
 import { createServer as createHttpServer } from 'http';
 import { createServer as createHttpsServer } from 'https';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, statSync } from 'fs';
 import { parse } from 'url';
+import { join } from 'path';
 import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
 import type { Server as HTTPServer } from 'http';
@@ -93,28 +94,51 @@ app.prepare().then(async () => {
   const { getPool } = await import('./lib/db');
   const { logger } = await import('./lib/logger');
   const pool = getPool();
+  // ✅ Handler pour servir les fichiers statiques et les pages Next.js
+  const requestHandler = async (req: any, res: any) => {
+    try {
+      const parsedUrl = parse(req.url || '', true);
+      const { pathname } = parsedUrl;
+
+      // ✅ Servir les fichiers statiques Next.js (_next/static)
+      if (pathname?.startsWith('/_next/static')) {
+        const filePath = join(process.cwd(), '.next', 'static', pathname.replace('/_next/static', ''));
+
+        try {
+          if (existsSync(filePath) && statSync(filePath).isFile()) {
+            // Déterminer le Content-Type
+            let contentType = 'application/octet-stream';
+            if (filePath.endsWith('.js')) contentType = 'application/javascript; charset=utf-8';
+            else if (filePath.endsWith('.css')) contentType = 'text/css; charset=utf-8';
+            else if (filePath.endsWith('.json')) contentType = 'application/json; charset=utf-8';
+            else if (filePath.endsWith('.woff')) contentType = 'font/woff';
+            else if (filePath.endsWith('.woff2')) contentType = 'font/woff2';
+
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+            const fileContent = readFileSync(filePath);
+            res.end(fileContent);
+            return;
+          }
+        } catch (err) {
+          console.error('Error serving static file:', err);
+        }
+      }
+
+      // ✅ Laisser Next.js gérer le reste
+      await handle(req, res, parsedUrl);
+    } catch (err) {
+      console.error('Error handling request:', err);
+      res.statusCode = 500;
+      res.end('Internal server error');
+    }
+  };
+
   // ✅ Créer le serveur HTTP ou HTTPS selon la config
   const httpServer: HTTPServer | HTTPSServer = httpsOptions
-    ? createHttpsServer(httpsOptions, async (req, res) => {
-        try {
-          const parsedUrl = parse(req.url || '', true);
-          await handle(req, res, parsedUrl);
-        } catch (err) {
-          console.error('Error handling request:', err);
-          res.statusCode = 500;
-          res.end('Internal server error');
-        }
-      })
-    : createHttpServer(async (req, res) => {
-        try {
-          const parsedUrl = parse(req.url || '', true);
-          await handle(req, res, parsedUrl);
-        } catch (err) {
-          console.error('Error handling request:', err);
-          res.statusCode = 500;
-          res.end('Internal server error');
-        }
-      });
+    ? createHttpsServer(httpsOptions, requestHandler)
+    : createHttpServer(requestHandler);
 
   // Initialiser Socket.IO
   const protocol = httpsOptions ? 'https' : 'http';
